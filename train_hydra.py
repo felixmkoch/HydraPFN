@@ -12,7 +12,7 @@ import numpy as np
 from hydrapfn.scripts.model_trainer import train_model
 from hydrapfn.scripts.model_saver import save_model
 
-from hydra_evaluation_helper import EvalHelper
+from hydrapfn.scripts.eval_helper import EvalHelper
 
 #------------------------------------------------------------------------------------------------
 #                                    DEFAULT SETTINGS

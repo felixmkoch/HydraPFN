@@ -10,7 +10,7 @@ from hydrapfn.utils import init_dist
 import hydrapfn.utils as utils
 from hydrapfn.scripts import tabular_metrics
 from hydrapfn.hydra_context import HydraModel
-from hydra_evaluation_helper import EvalHelper
+from hydrapfn.scripts.eval_helper import EvalHelper
 
 
 class Losses():
