@@ -54,7 +54,9 @@ def get_gp_prior_hyperparameters(config):
 def train_model(
         config: dict,           # Config containing training information.
         evaluation_class = None,
-        device: str = "cuda"    # Default device to be train on.
+        device: str = "cuda",   # Default device to be train on.
+        best_model_path: str = None,  # Path to save best model checkpoint
+        model_saver = None      # Function to save model checkpoints
 ):
     
     #----------------------------------------------------------------------
@@ -147,6 +149,8 @@ def train_model(
         weight_decay = 0.0,
         config = config,
         device=device,
+        best_model_path = best_model_path,
+        model_saver = model_saver,
         **config
     )
 

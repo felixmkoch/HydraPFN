@@ -106,6 +106,8 @@ class EvalHelper:
             ds = self.openml_cc18_dids_large
         elif evaluation_type == "test":
             ds = self.test_dids_classification
+        elif evaluation_type == "val":
+            ds = self.valid_dids_classification
         elif evaluation_type not in predefined:
             ds = [evaluation_type]
 
