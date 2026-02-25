@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from hydrapfn.utils import get_cosine_schedule_with_warmup
 from hydrapfn.utils import init_dist
 import hydrapfn.utils as utils
-from tabpfn.scripts import tabular_metrics
+from hydrapfn.scripts import tabular_metrics
 from hydrapfn.hydra_context import HydraModel
 from hydra_evaluation_helper import EvalHelper
 

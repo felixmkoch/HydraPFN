@@ -7,7 +7,7 @@ class EvalHelper:
 
     def __init__(self):
 
-        # Got these datasets from the scripts of tabpfn
+        # Got these datasets from the hydrapfn scripts
         self.test_dids_classification = [973, 1111, 1169, 1596, 40981, 41138, 41142, 41143, 41146, 41147, 41150, 41159, 41161, 41163, 41164, 41165, 41166, 41167, 41168, 41169]
         self.valid_dids_classification = [13, 59, 40710, 43, 1498]
 

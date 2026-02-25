@@ -1,2 +1,0 @@
-from tabpfn.scripts.transformer_prediction_interface import TabPFNClassifier
-from tabpfn.scripts.mamba_prediction_interface import MambaPFNClassifier

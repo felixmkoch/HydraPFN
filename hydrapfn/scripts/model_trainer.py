@@ -29,7 +29,7 @@ def make_get_batch(model_proto, **extra_kwargs):
 
 
 def get_mlp_prior_hyperparameters(config):
-    from tabpfn.priors.utils import gamma_sampler_f
+    from hydrapfn.priors.utils import gamma_sampler_f
     config = {hp: (list(config[hp].values())[0]) if type(config[hp]) is dict else config[hp] for hp in config}
 
     if 'random_feature_rotation' not in config:

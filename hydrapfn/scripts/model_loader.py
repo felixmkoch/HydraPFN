@@ -9,7 +9,7 @@ from hydrapfn.scripts.model_trainer import train_model
 
 def load_hydrapfn_model(checkpoint_path, device="cuda"):
     """
-    Load a single HydraPFN / TabPFN checkpoint from a given full path.
+    Load a single HydraPFN checkpoint from a given full path.
 
     :param checkpoint_path: Full path to .cpkt file
     :param device: Device to load model onto ('cpu' or 'cuda')
