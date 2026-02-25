@@ -1,8 +1,8 @@
-from tabpfn.scripts import tabular_metrics
+from hydrapfn.scripts import tabular_metrics
 import os
 from hydra_evaluation_helper import EvalHelper
-from tabpfn.scripts.hydra_prediction_interface import load_model_workflow as hydra_load_model_workflow
-from tabpfn.scripts.tabular_baselines import *
+from hydrapfn.scripts.hydra_prediction_interface import load_model_workflow as hydra_load_model_workflow
+from hydrapfn.scripts.tabular_baselines import *
 from scipy import stats
 
 from hydrapfn.scripts.model_loader import load_hydrapfn_model

@@ -55,15 +55,16 @@ eval_class = EvalHelper()
 #                                          CUSTOM
 #------------------------------------------------------------------------------------------------
 
-config['batch_size'] = 32 
-config['emsize'] = 128 
-config["epochs"] = 5
-config["bptt"] = 128
-config["max_eval_pos"] = 100       
+# Reduce size for quick smoke run (safe, behaviour unchanged)
+config['batch_size'] = 8
+config['emsize'] = 32
+config["epochs"] = 1
+config["bptt"] = 64
+config["max_eval_pos"] = 50
 
-config["num_steps"] = 16
+config["num_steps"] = 4
 
-config["nlayers"] = 4
+config["nlayers"] = 1
 config["enable_autocast"] = True
 
 # Using cross-attention to combine the hidden state resulting from hydra with the query examples.
@@ -71,7 +72,11 @@ config["use_cross_attention"] = True
 # Resulation to punish deviations from permutated hidden states.
 config["perm_reg_lam"] = 0.0
 
-device = "cuda:0"
+# Ensure WandB sees the final, modified config (not just the original)
+try:
+    wandb.config.update(config)
+except Exception:
+    pass
 
 #------------------------------------------------------------------------------------------------
 #                                           MODEL

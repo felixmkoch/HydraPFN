@@ -1,7 +1,7 @@
 import torch
 
 from .utils import get_batch_to_dataloader
-from tabpfn.utils import default_device
+from hydrapfn.utils import default_device
 
 def get_batch(batch_size, 
               seq_len, 
