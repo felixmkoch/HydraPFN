@@ -78,12 +78,16 @@ def train(
         config={},
         best_model_path: str = None,
         model_saver = None,
+        num_permutations: int = 1,
         **model_extra_args
 ):
     
     #
     print(f'Using device {device}')
     using_dist, rank, device = init_dist(device)
+
+    # Ensure the number of permutations around the hydra block is at least 1 (default value).
+    num_permutations = max(num_permutations, 1)
 
     #-----------------------------------------------------------------------------
     #                      Initialize Datloader et al
@@ -113,6 +117,7 @@ def train(
             y_encoder=y_encoder_generator(1, emsize),
             num_layers=nlayers,
             use_cross_attention=use_cross_attention,
+            num_permutations=num_permutations,
             device=device
         )
     

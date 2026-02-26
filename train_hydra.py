@@ -56,21 +56,23 @@ eval_class = EvalHelper()
 #------------------------------------------------------------------------------------------------
 
 # Reduce size for quick smoke run (safe, behaviour unchanged)
-config['batch_size'] = 8
-config['emsize'] = 32
-config["epochs"] = 5
-config["bptt"] = 64
-config["max_eval_pos"] = 50
+config['batch_size'] = 32
+config['emsize'] = 512
+config["epochs"] = 100
+config["bptt"] = 128
+config["max_eval_pos"] = 120
 
-config["num_steps"] = 4
+config["num_steps"] = 16
 
-config["nlayers"] = 1
+config["nlayers"] = 12
 config["enable_autocast"] = True
 
 # Using cross-attention to combine the hidden state resulting from hydra with the query examples.
 config["use_cross_attention"] = True
-# Resulation to punish deviations from permutated hidden states.
+# Regularization to punish deviations from permutated hidden states.
 config["perm_reg_lam"] = 0.0
+# Context Permutations aroudn the hydra context block. This number increases the memory needed. Default value is 1. 
+config["num_permutations"] = 1
 
 # Ensure WandB sees the final, modified config (not just the original)
 try:

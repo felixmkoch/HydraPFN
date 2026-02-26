@@ -256,10 +256,11 @@ class HydraBackbone(nn.Module):
         )
 
 
-    def forward(self,
-                x,
-                inference_parameters
-                ):
+    def forward(
+        self,
+        x,
+        inference_parameters=None
+    ):
             
         hidden_states = x
 
@@ -342,6 +343,7 @@ class HydraModel(nn.Module):
                  fused_add_norm = False,
                  residual_in_fp32 = False,
                  device = "cpu",
+                 num_permutations: int = 1,
                  dtype=None
                  ) -> None:
 
@@ -361,6 +363,7 @@ class HydraModel(nn.Module):
         self.cross_attn = SimpleCrossAttention(dim=ninp, n_heads=4)
         print(f"Hydra with cross attention set to {use_cross_attention}")
         self.use_cross_attention = use_cross_attention
+        self.num_permutations = num_permutations
 
         factory_kwargs = {"device": device, "dtype": dtype}
 
@@ -422,14 +425,49 @@ class HydraModel(nn.Module):
         )
 
         # ---------- ORIGINAL CONTEXT ----------
-        context_tokens = x_src[:single_eval_pos] + y_src[:single_eval_pos]
-        query_tokens = x_src[single_eval_pos:]
+        context_tokens = x_src[:single_eval_pos] + y_src[:single_eval_pos]   # (S, B, D)
+        query_tokens = x_src[single_eval_pos:]                              # (Sq, B, D)
 
-        context_tokens = context_tokens.permute(1, 0, 2)  # (B, Nc, D)
-        context_hidden = self.mamba_backbone(context_tokens, inference_parameters=None)
-
+        # Move to (B, S, D)
+        context_tokens = context_tokens.permute(1, 0, 2)
         query_tokens = query_tokens.permute(1, 0, 2)
 
+        B, S, D = context_tokens.shape
+        P = self.num_permutations
+
+        if P > 1:
+            # Create P random permutations
+            perms = torch.stack(
+                [torch.randperm(S, device=context_tokens.device) for _ in range(P)],
+                dim=0
+            )  # (P, S)
+
+            # Expand context to (P, B, S, D)
+            context_expanded = context_tokens.unsqueeze(0).expand(P, B, S, D)
+
+            # Apply permutations
+            perms_expanded = perms.unsqueeze(1).unsqueeze(-1).expand(P, B, S, D)
+            context_permuted = torch.gather(context_expanded, 2, perms_expanded)
+
+            # Merge permutation and batch dimension
+            context_permuted = context_permuted.reshape(P * B, S, D)
+
+            # Run backbone once
+            hidden = self.mamba_backbone(context_permuted, inference_parameters=None)
+
+            # Reshape back to (P, B, S, D)
+            hidden = hidden.reshape(P, B, S, D)
+
+            # Average over permutations
+            context_hidden = hidden.mean(dim=0)   # (B, S, D)
+
+        else:
+            context_hidden = self.mamba_backbone(
+                context_tokens,
+                inference_parameters=None,
+            )
+
+        # ---------- Cross Attention ----------
         if self.use_cross_attention:
             conditioned_query = self.cross_attn(query_tokens, context_hidden)
             conditioned_query = conditioned_query.permute(1, 0, 2)
