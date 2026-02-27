@@ -49,18 +49,6 @@ def load_hydrapfn_model(checkpoint_path, device="cuda"):
 
     # Override training-specific settings for safe inference
     config_sample["categorical_features_sampler"] = lambda: lambda x: ([], [], [])
-    config_sample["num_features_used_in_training"] = config_sample["num_features_used"]
-    config_sample["num_features_used"] = lambda: config_sample["num_features"]
-    config_sample["num_classes_in_training"] = config_sample["num_classes"]
-    config_sample["num_classes"] = 2
-    config_sample["batch_size_in_training"] = config_sample["batch_size"]
-    config_sample["batch_size"] = 1
-    config_sample["bptt_in_training"] = config_sample["bptt"]
-    config_sample["bptt"] = 10
-    config_sample["bptt_extra_samples_in_training"] = config_sample[
-        "bptt_extra_samples"
-    ]
-    config_sample["bptt_extra_samples"] = None
 
     config_sample["epochs"] = 0
 
