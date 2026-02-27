@@ -38,20 +38,6 @@ config["num_features_used"] = uniform_int_sampler_f(1, max_features)
 device = "cuda:0"
 
 #------------------------------------------------------------------------------------------------
-#                                           WANDB
-#------------------------------------------------------------------------------------------------
-
-wandb_project = "hydrapfn"
-wandb_job_type = f"test"
-wandb_run_name = f"test_local"
-
-wandb_config= config
-
-wandb_run = wandb.init(project=wandb_project,job_type=wandb_job_type,config=wandb_config, name=wandb_run_name, group="DDP")
-
-eval_class = EvalHelper()
-
-#------------------------------------------------------------------------------------------------
 #                                          CUSTOM
 #------------------------------------------------------------------------------------------------
 
@@ -74,11 +60,19 @@ config["perm_reg_lam"] = 0.0
 # Context Permutations aroudn the hydra context block. This number increases the memory needed. Default value is 1. 
 config["num_permutations"] = 1
 
-# Ensure WandB sees the final, modified config (not just the original)
-try:
-    wandb.config.update(config)
-except Exception:
-    pass
+#------------------------------------------------------------------------------------------------
+#                                           WANDB
+#------------------------------------------------------------------------------------------------
+
+wandb_project = "hydrapfn"
+wandb_job_type = f"test"
+wandb_run_name = f"test_local"
+
+wandb_config= config
+
+wandb_run = wandb.init(project=wandb_project,job_type=wandb_job_type,config=wandb_config, name=wandb_run_name, group="DDP")
+
+eval_class = EvalHelper()
 
 #------------------------------------------------------------------------------------------------
 #                                           MODEL
