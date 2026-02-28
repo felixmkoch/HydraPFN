@@ -86,7 +86,7 @@ class EvalHelper:
                              permutation_random=False,
                              permutation_bagging=1,
                              sample_bagging=0,
-                             eval_filters={},
+                             eval_filters={"categorical": True,"nans": True,"multiclass": True},
                              dummy_size=(1000, 100),
                              return_whole_output=False):
         """Run evaluation over a set of datasets or a dummy dataset.
