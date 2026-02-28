@@ -153,8 +153,6 @@ class EvalHelper:
                              split_numbers=[1],
                              single_evaluation_prompt=False,
                              permutation_random=False,
-                             permutation_bagging=1,
-                             sample_bagging=0,
                              eval_filters={},
                              dummy_size = (1000, 100),       # Size of the dummy tensor that should be tested if evaluation_type is dummy.
                              return_whole_output=False):
@@ -163,7 +161,7 @@ class EvalHelper:
         Evaluation on customly settable datasets.
         '''
 
-        predefined_eval_types = ["openmlcc18", "openmlcc18_large", "test", "dummy"]
+        predefined_eval_types = ["openmlcc18", "openmlcc18_large", "val", "test", "dummy"]
 
         # Standard case: Normal eval dataset
         if evaluation_type not in predefined_eval_types: 
@@ -182,6 +180,7 @@ class EvalHelper:
             if evaluation_type == "openmlcc18": ds = self.openml_cc18_dids_small
             if evaluation_type == "openmlcc18_large": ds = self.openml_cc18_dids_large
             if evaluation_type == "test": ds = self.test_dids_classification
+            if evaluation_type == "val": ds = self.valid_dids_classification
             if evaluation_type not in predefined_eval_types: ds = [evaluation_type]
                 
             self.check_datasets_data(ds)

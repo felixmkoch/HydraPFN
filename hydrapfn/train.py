@@ -10,7 +10,7 @@ from hydrapfn.utils import init_dist
 import hydrapfn.utils as utils
 from hydrapfn.scripts import tabular_metrics
 from hydrapfn.hydra_context import HydraModel
-from hydra_evaluation_helper import EvalHelper
+from hydrapfn.scripts.eval_helper import EvalHelper
 
 
 class Losses():
@@ -76,12 +76,17 @@ def train(
         use_cross_attention: bool = False,
         perm_reg_lam: float = None,         # Permutation Regularization weighting.
         config={},
+        best_model_path: str = None,
+        model_saver = None,
+        num_permutations: int = 1,
         **model_extra_args
 ):
     
-    #
     print(f'Using device {device}')
     using_dist, rank, device = init_dist(device)
+
+    # Ensure the number of permutations around the hydra block is at least 1 (default value).
+    num_permutations = max(num_permutations, 1)
 
     #-----------------------------------------------------------------------------
     #                      Initialize Datloader et al
@@ -111,6 +116,7 @@ def train(
             y_encoder=y_encoder_generator(1, emsize),
             num_layers=nlayers,
             use_cross_attention=use_cross_attention,
+            #num_permutations=num_permutations,
             device=device
         )
     
@@ -140,9 +146,6 @@ def train(
         total_positional_losses = 0.
         total_positional_losses_recorded = 0
         nan_steps = 0
-
-        # Check if permutation regularization needs to be applied.
-        do_compute_perm_reg = perm_reg_lam is not None and perm_reg_lam != 0.0
 
         for batch, (data, targets, single_eval_pos) in enumerate(dl):
             cm = nullcontext()
@@ -213,6 +216,7 @@ def train(
     print(f"Total number of epochs: {epochs}")
     total_loss = float('inf')
     total_positional_losses = [float('inf')]
+    best_validation_metric = -float('inf')
 
     try:
         for epoch in (range(1, epochs + 1)):
@@ -236,14 +240,34 @@ def train(
             # Do other evaluations as well.
             if evaluation_class:
                 metric_used = tabular_metrics.auc_metric
-                eval_result = evaluation_class.do_evaluation(model=model, 
+                eval_result = evaluation_class.do_evaluation_custom(model=model, 
                                                              bptt=bptt,
                                                              eval_positions=[1000],
                                                              metric=metric_used, 
-                                                             device=device, 
-                                                             method_name="hydra")
+                                                             device=device,
+                                                             evaluation_type="val")
+
+                # Flatten list of results from multiple datasets and splits
+                all_values = [v for values_list in eval_result.values() for v in values_list]
+                val_mean_auc = sum(all_values) / len(all_values) if all_values else 0
+
+                print(f"Validation AUC: {val_mean_auc:.4f}")
                 
-                wandb_dict[f"test/mean_acc"] = eval_result
+                wandb_dict[f"test/mean_auc"] = val_mean_auc
+                
+                # Save best model based on validation metric
+                if val_mean_auc > best_validation_metric:
+                    best_validation_metric = val_mean_auc
+                    best_epoch = epoch
+                    if best_model_path and model_saver:
+                        model_saver(
+                            model=model.to('cpu'),
+                            optimizer=optimizer,
+                            path=best_model_path,
+                            config_sample=config
+                        )
+                        print(f"Best model saved with validation metric: {best_validation_metric:.4f} at epoch {epoch}")
+                        model = model.to(device)
 
             wandb.log(wandb_dict)
 
