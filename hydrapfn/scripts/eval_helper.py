@@ -84,8 +84,6 @@ class EvalHelper:
                              split_numbers=[1],
                              single_evaluation_prompt=False,
                              permutation_random=False,
-                             permutation_bagging=1,
-                             sample_bagging=0,
                              eval_filters={"categorical": True,"nans": True,"multiclass": True},
                              dummy_size=(1000, 100),
                              return_whole_output=False):
@@ -118,7 +116,7 @@ class EvalHelper:
         for did, dataset in self.limit_dict.items():
             results[did] = []
             for split_number in split_numbers:
-                out = evaluate(dataset, bptt, eval_positions, metric, model, device, split_number=split_number, random_premutation=permutation_random, single_evaluation_prompt=single_evaluation_prompt)
+                out = evaluate(dataset, bptt, eval_positions, metric, model, split_number, device, random_premutation=permutation_random, single_evaluation_prompt=single_evaluation_prompt)
                 results[did].append(out if return_whole_output else out["mean_metric"].item())
 
         return results

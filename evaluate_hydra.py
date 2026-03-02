@@ -8,7 +8,8 @@ from hydrapfn.scripts.model_loader import load_hydrapfn_model
 import pandas as pd
 
 # Choose dataset or single DID
-EVALUATION_TYPE = "openmlcc18"
+# EVALUATION_TYPE = "openmlcc18"
+EVALUATION_TYPE = "val"
 # EVALUATION_TYPE = 14
 
 # Keep these feature filters enabled/disabled
@@ -21,9 +22,9 @@ EVALUATION_TYPE_FILTERS = {
 EVALUATION_METHODS = ["hydra"]
 
 METRIC_USED = tabular_metrics.auc_metric
-RESULT_CSV_SAVE_DIR = os.path.join("result_csvs", "test.csv")
-MODEL_PATH = "hydrapfn/trained_models/test_model.cpkt"
-SPLIT_NUMBERS = [1, 2, 3, 4, 5]
+RESULT_CSV_SAVE_DIR = os.path.join("result_csvs", "val.csv")
+MODEL_PATH = "hydrapfn/trained_models/hydrapfn.cpkt"
+SPLIT_NUMBERS = [1]
 
 bptt_here = 1024
 CONFIDENCE_LEVEL = 0.95

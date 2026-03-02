@@ -57,6 +57,7 @@ def evaluate_position(X,
                       eval_position, 
                       ds_name, 
                       metric_used=None, 
+                      split_number=1,
                       device='cuda', 
                       **kwargs):
     
@@ -66,7 +67,7 @@ def evaluate_position(X,
         bptt, 
         eval_position, 
         is_classification=tabular_metrics.is_classification(metric_used), 
-        split_number=1)
+        split_number=split_number)
     
     if eval_xs is None:
         print(f"No dataset could be generated {ds_name} {bptt}")
@@ -115,6 +116,7 @@ def evaluate(
         eval_positions,
         metric_used,
         model,
+        split_number,
         device='cuda',
         **kwargs
 ):
@@ -146,6 +148,7 @@ def evaluate(
                 ds_name=ds_name, 
                 eval_position = eval_position_real, 
                 metric_used = metric_used, 
+                split_number = split_number,
                 device=device, 
                 **kwargs)
             
