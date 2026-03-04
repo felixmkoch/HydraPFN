@@ -79,6 +79,7 @@ def train(
         best_model_path: str = None,
         model_saver = None,
         num_permutations: int = 1,
+        save_every_n_epochs=100,
         **model_extra_args
 ):
     
@@ -261,18 +262,16 @@ def train(
                 wandb_dict[f"test/mean_auc"] = val_mean_auc
                 
                 # Save best model based on validation metric
-                if val_mean_auc > best_validation_metric:
-                    best_validation_metric = val_mean_auc
-                    best_epoch = epoch
-                    if best_model_path and model_saver:
-                        model_saver(
-                            model=model.to('cpu'),
-                            optimizer=optimizer,
-                            path=best_model_path,
-                            config_sample=config
-                        )
-                        print(f"Best model saved with validation metric: {best_validation_metric:.4f} at epoch {epoch}")
-                        model = model.to(device)
+                
+                if epoch % save_every_n_epochs == 0 and model_saver:
+                    model_saver(
+                        model=model.to('cpu'),
+                        optimizer=optimizer,
+                        path=best_model_path,
+                        config_sample=config
+                    )
+                    print(f"Model saved with validation metric: {val_mean_auc:.4f} at epoch {epoch}")
+                    model = model.to(device)
 
             wandb.log(wandb_dict)
 
