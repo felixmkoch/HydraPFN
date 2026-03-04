@@ -80,6 +80,7 @@ def train(
         model_saver = None,
         num_permutations: int = 1,
         save_every_n_epochs=100,
+        continue_training: dict = {},
         **model_extra_args
 ):
     
@@ -110,27 +111,47 @@ def train(
     #                            Model Definition
     #-----------------------------------------------------------------------------
 
-    model = HydraModel(
-            encoder=encoder,
-            n_out=n_out,
-            ninp=emsize,
-            nhid=nhid,
-            y_encoder=y_encoder_generator(1, emsize),
-            num_layers=nlayers,
-            use_cross_attention=use_cross_attention,
-            num_permutations=num_permutations,
-            device=device
-        )
-    
+    optimizer = None
+
+    # Check whetehr a model checkpoint exists on which to conitinue on training. If not, create a new model.
+    if continue_training and continue_training.get('path'):
+        # Load existing model and optimizer from checkpoint
+        from hydrapfn.scripts.model_loader import load_hydrapfn_model
+        print(f"Continuing training from checkpoint: {continue_training['path']}")
+        model, loaded_optimizer, _ = load_hydrapfn_model(continue_training['path'], device=device)
+        
+        # Check if we should override the optimizer
+        override_optimizer = continue_training.get('override_optimizer', False)
+        
+        if override_optimizer:
+            print("Creating new optimizer (override_optimizer=True)")
+            optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            print("Using loaded optimizer from checkpoint")
+            optimizer = loaded_optimizer
+
+    else:
+        # Create new model from scratch
+        model = HydraModel(
+                encoder=encoder,
+                n_out=n_out,
+                ninp=emsize,
+                nhid=nhid,
+                y_encoder=y_encoder_generator(1, emsize),
+                num_layers=nlayers,
+                use_cross_attention=use_cross_attention,
+                num_permutations=num_permutations,
+                device=device
+            )
+        
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
     model.criterion = criterion
+    model.to(device)
+    dl.model = model
 
     print(f"Numer of Parameter in model {sum(p.numel() for p in model.parameters())/1000/1000:.{2}f} M parameters")
     print(f"Using permutation regularization with lambda {perm_reg_lam} <-- If none, no regularization.")
-
-    model.to(device)
-    dl.model = model    # Model attatched to dataloader as well.
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = scheduler(optimizer, warmup_epochs, epochs)
     scaler = GradScaler("cuda") if train_mixed_precision else None
 
@@ -278,5 +299,13 @@ def train(
             scheduler.step()
     except KeyboardInterrupt:
         pass
+
+    model_saver(
+        model=model.to('cpu'),
+        optimizer=optimizer,
+        path=best_model_path,
+        config_sample=config
+    )
+    print(f"Model saved with validation metric: {val_mean_auc:.4f} at last epoch")
 
     return total_loss, total_positional_losses, model.to('cpu'), optimizer, dl

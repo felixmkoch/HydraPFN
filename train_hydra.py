@@ -43,8 +43,8 @@ device = "cuda:0"
 
 # Reduce size for quick smoke run (safe, behaviour unchanged)
 config['batch_size'] = 32
-config['emsize'] = 512
-config["epochs"] = 100
+config['emsize'] = 256
+config["epochs"] = 10
 config["bptt"] = 128
 config["max_eval_pos"] = 120
 
@@ -82,7 +82,8 @@ model, optimizer = train_model(
     config=config,
     evaluation_class=eval_class,
     best_model_path="hydrapfn/trained_models/test_model.cpkt",
-    model_saver=save_model
+    model_saver=save_model,
+    continue_training={}
 )
 
 

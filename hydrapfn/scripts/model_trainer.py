@@ -56,7 +56,8 @@ def train_model(
         evaluation_class = None,
         device: str = "cuda",   # Default device to be train on.
         best_model_path: str = None,  # Path to save best model checkpoint
-        model_saver = None      # Function to save model checkpoints
+        model_saver = None,      # Function to save model checkpoints
+        continue_training: dict = {}    # Dict containing information about the training continue.
 ):
     
     #----------------------------------------------------------------------
@@ -151,6 +152,7 @@ def train_model(
         device=device,
         best_model_path = best_model_path,
         model_saver = model_saver,
+        continue_training = continue_training,
         **config
     )
 
