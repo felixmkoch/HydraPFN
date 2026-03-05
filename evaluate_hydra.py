@@ -9,7 +9,7 @@ import pandas as pd
 
 # Choose dataset or single DID
 # EVALUATION_TYPE = "openmlcc18"
-EVALUATION_TYPE = "val"
+EVALUATION_TYPE = "test"
 # EVALUATION_TYPE = 14
 
 # Keep these feature filters enabled/disabled
@@ -22,14 +22,16 @@ EVALUATION_TYPE_FILTERS = {
 EVALUATION_METHODS = ["hydra"]
 
 METRIC_USED = tabular_metrics.auc_metric
-RESULT_CSV_SAVE_DIR = os.path.join("result_csvs", "val.csv")
+RESULT_CSV_SAVE_DIR = os.path.join("result_csvs", "test4.csv")
 MODEL_PATH = "hydrapfn/trained_models/hydrapfn.cpkt"
-SPLIT_NUMBERS = [1]
+SPLIT_NUMBERS = [i+1 for i in range(16)]
 
 bptt_here = 1024
 CONFIDENCE_LEVEL = 0.95
 eval_positions = [972]
 device = "cuda:0"
+
+num_pcps: int = 4
 
 eval_helper = EvalHelper()
 
@@ -46,7 +48,7 @@ def do_evaluation(eval_list):
     if "hydra" in eval_list:
         hydra_model, optimizer, hydra_config = load_hydrapfn_model(MODEL_PATH)
         result_dict["hydra"] = eval_helper.do_evaluation_custom(hydra_model, bptt=bptt_here, eval_positions=eval_positions, metric=METRIC_USED, device=device,
-                                                                 evaluation_type=EVALUATION_TYPE, split_numbers=SPLIT_NUMBERS, eval_filters=EVALUATION_TYPE_FILTERS)
+                                                                 evaluation_type=EVALUATION_TYPE, split_numbers=SPLIT_NUMBERS, eval_filters=EVALUATION_TYPE_FILTERS, num_pcps=num_pcps)
     return result_dict
 
 

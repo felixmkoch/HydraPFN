@@ -86,7 +86,8 @@ class EvalHelper:
                              permutation_random=False,
                              eval_filters={"categorical": True,"nans": True,"multiclass": True},
                              dummy_size=(1000, 100),
-                             return_whole_output=False):
+                             return_whole_output=False,
+                             num_pcps: int = 1):
         """Run evaluation over a set of datasets or a dummy dataset.
 
         Returns dict keyed by did (or 'dummy') with lists of per-split results.
@@ -116,7 +117,7 @@ class EvalHelper:
         for did, dataset in self.limit_dict.items():
             results[did] = []
             for split_number in split_numbers:
-                out = evaluate(dataset, bptt, eval_positions, metric, model, split_number, device, random_premutation=permutation_random, single_evaluation_prompt=single_evaluation_prompt)
+                out = evaluate(dataset, bptt, eval_positions, metric, model, split_number, device, random_premutation=permutation_random, single_evaluation_prompt=single_evaluation_prompt, num_pcps=num_pcps)
                 results[did].append(out if return_whole_output else out["mean_metric"].item())
 
         return results

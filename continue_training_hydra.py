@@ -45,8 +45,8 @@ device = "cuda:0"
 config['batch_size'] = 32
 config['emsize'] = 512
 config["epochs"] = 100
-config["bptt"] = 128
-config["max_eval_pos"] = 120
+config["bptt"] = 256
+config["max_eval_pos"] = 250
 
 config["num_steps"] = 16
 

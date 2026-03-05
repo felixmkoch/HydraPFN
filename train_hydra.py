@@ -57,8 +57,6 @@ config["enable_autocast"] = True
 config["use_cross_attention"] = True
 # Regularization to punish deviations from permutated hidden states.
 config["perm_reg_lam"] = 0.0
-# Context Permutations aroudn the hydra context block. This number increases the memory needed. Default value is 1. 
-config["num_permutations"] = 1
 
 #------------------------------------------------------------------------------------------------
 #                                           WANDB

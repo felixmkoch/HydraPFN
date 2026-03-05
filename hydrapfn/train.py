@@ -1,5 +1,6 @@
 from torch import nn
 import torch
+import torch.nn.functional as F
 import time
 import wandb
 from torch.amp import GradScaler, autocast
@@ -12,6 +13,8 @@ from hydrapfn.scripts import tabular_metrics
 from hydrapfn.hydra_context import HydraModel
 from hydrapfn.scripts.eval_helper import EvalHelper
 
+from hydra.modules.hydra import Hydra
+
 
 class Losses():
     gaussian = nn.GaussianNLLLoss(full=True, reduction='none')
@@ -20,6 +23,53 @@ class Losses():
         num_classes = num_classes.shape[0] if torch.is_tensor(num_classes) else num_classes
         return nn.CrossEntropyLoss(reduction='none', weight=torch.ones(num_classes))
     bce = nn.BCEWithLogitsLoss(reduction='none')
+
+
+def log_hydra_stability_to_wandb(model):
+    """
+    Logs stability-critical Hydra parameters to wandb.
+    Safe to call once per epoch.
+    """
+
+    wandb_dict = {}
+
+    for name, module in model.named_modules():
+
+        if not isinstance(module, Hydra):
+            continue
+        
+        # ----- Continuous eigenvalues -----
+        A = -torch.exp(module.A_log.detach().float())  # (nheads)
+
+        wandb_dict[f"hydra/{name}_A_min"] = A.min().item()
+        wandb_dict[f"hydra/{name}_A_max"] = A.max().item()
+        wandb_dict[f"hydra/{name}_A_mean"] = A.mean().item()
+
+        # Should always be 0
+        wandb_dict[f"hydra/{name}_A_positive_frac"] = (A > 0).float().mean().item()
+
+        # ----- dt estimates (bias only, safe approx) -----
+        dt_est = F.softplus(module.dt_bias.detach())
+
+        wandb_dict[f"hydra/{name}_dt_min"] = dt_est.min().item()
+        wandb_dict[f"hydra/{name}_dt_max"] = dt_est.max().item()
+        wandb_dict[f"hydra/{name}_dt_mean"] = dt_est.mean().item()
+
+        # ----- Worst-case discrete eigenvalue -----
+        # Conservative: max(dt) * min(A)
+        worst_lambda = torch.exp(dt_est.max() * A.min())
+
+        wandb_dict[f"hydra/{name}_worst_discrete_eig"] = worst_lambda.item()
+
+        # Flag instability
+        wandb_dict[f"hydra/{name}_unstable_flag"] = float(worst_lambda > 1.0)
+
+        # ----- Norm tracking (optional but useful) -----
+        wandb_dict[f"hydra/{name}_A_log_norm"] = module.A_log.detach().norm().item()
+        wandb_dict[f"hydra/{name}_dt_bias_norm"] = module.dt_bias.detach().norm().item()
+        wandb_dict[f"hydra/{name}_D_norm"] = module.D.detach().norm().item()
+
+    return wandb_dict
 
 
 def symmetric_kl_hidden(h1, h2, eps=1e-8):
@@ -78,7 +128,6 @@ def train(
         config={},
         best_model_path: str = None,
         model_saver = None,
-        num_permutations: int = 1,
         save_every_n_epochs=100,
         continue_training: dict = {},
         **model_extra_args
@@ -87,9 +136,6 @@ def train(
     #
     print(f'Using device {device}')
     using_dist, rank, device = init_dist(device)
-
-    # Ensure the number of permutations around the hydra block is at least 1 (default value).
-    num_permutations = max(num_permutations, 1)
 
     #-----------------------------------------------------------------------------
     #                      Initialize Datloader et al
@@ -140,7 +186,6 @@ def train(
                 y_encoder=y_encoder_generator(1, emsize),
                 num_layers=nlayers,
                 use_cross_attention=use_cross_attention,
-                num_permutations=num_permutations,
                 device=device
             )
         
@@ -242,8 +287,6 @@ def train(
     print(f"Total number of epochs: {epochs}")
     total_loss = float('inf')
     total_positional_losses = [float('inf')]
-    best_validation_metric = -float('inf')
-    best_epoch = -1
 
     try:
         for epoch in (range(1, epochs + 1)):
@@ -293,6 +336,9 @@ def train(
                     )
                     print(f"Model saved with validation metric: {val_mean_auc:.4f} at epoch {epoch}")
                     model = model.to(device)
+
+            hydra_stats = log_hydra_stability_to_wandb(model)
+            wandb_dict.update(hydra_stats)
 
             wandb.log(wandb_dict)
 

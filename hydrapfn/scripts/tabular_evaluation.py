@@ -59,6 +59,7 @@ def evaluate_position(X,
                       metric_used=None, 
                       split_number=1,
                       device='cuda', 
+                      num_pcps=1,
                       **kwargs):
     
     eval_xs, eval_ys = generate_valid_split(
@@ -90,6 +91,7 @@ def evaluate_position(X,
         inference_mode = True,
         device = device,
         extend_features = True,
+        num_pcps = num_pcps,
         **kwargs
     )
 
@@ -118,6 +120,7 @@ def evaluate(
         model,
         split_number,
         device='cuda',
+        num_pcps: int = 1,
         **kwargs
 ):
     
@@ -150,6 +153,7 @@ def evaluate(
                 metric_used = metric_used, 
                 split_number = split_number,
                 device=device, 
+                num_pcps=num_pcps,
                 **kwargs)
             
             if r is None:

@@ -31,6 +31,7 @@ def hydra_predict(model,
                 seed=0,
                 no_grad=True,
                 return_logits=False,
+                num_pcps: int = 1,
                 **kwargs
             ):
     
@@ -44,7 +45,8 @@ def hydra_predict(model,
         with inference_mode_call:
             output, _, _ = model(
                     (None, eval_xs, eval_ys.float()),
-                    single_eval_pos=eval_position)
+                    single_eval_pos=eval_position,
+                    num_pcps=num_pcps)
             output = output[:, :, 0:num_classes]
 
             output = output[:, :, 0:num_classes] / torch.exp(softmax_temperature)
