@@ -7,16 +7,21 @@ import pandas as pd
 
 from hydrapfn.scripts.hydra_prediction_interface import hydra_predict
 from hydrapfn.scripts.tabular_metrics import accuracy_metric
+from hydrapfn.scripts.tabular_metrics import auc_metric
+from hydrapfn.scripts.tabular_metrics import log_loss_metric
 
 class TabArenaEvaluator:
 
     def eval_on_tabarena(
             self,
             model,
+            num_pcps: int = 1,
             is_lite: bool = False,
             tabarena_version: str = "tabarena-v0.1",
             max_instances: int = 2_000,
-            only_binary_classification: bool = True):
+            max_classes: int = None,
+            metric = auc_metric,
+            matric_multiclass = log_loss_metric):
         """
         Code mostly from https://github.com/autogluon/tabarena/blob/main/examples/benchmarking/run_get_tabarena_datasets_from_openml.py
         """
@@ -55,8 +60,8 @@ class TabArenaEvaluator:
                 continue
 
             # binary classification filter, applied after sample-size
-            if only_binary_classification and not self._is_binary(dataset):
-                print(f"  Skipping task {task_id} because it is not binary")
+            if max_classes and not self._is_in_max_classes(dataset, max_classes):
+                print(f"  Skipping task {task_id} because it is not in the specified number of classes")
                 continue
 
             # Get the number of folds and repeats used in TabArena
@@ -133,6 +138,7 @@ class TabArenaEvaluator:
                             categorical_feats=categorical_feats,
                             inference_mode=True,
                             extend_features=True,
+                            num_pcps=num_pcps
                         )
                         
                         y_test_true = eval_ys[eval_position:, 0]
@@ -140,10 +146,17 @@ class TabArenaEvaluator:
                         # remove batch dimension - its always of length 0.
                         test_outputs = outputs[0]
 
-                        accuracy = accuracy_metric(
+                        # For multiclass classification the log loss is used in TabArenav0.1
+                        if len(torch.unique(y_test_true)) > 2:
+                            metric_used = matric_multiclass
+                        else:
+                            metric_used = metric
+
+                        accuracy = metric_used(
                             y_test_true.cpu(),
                             test_outputs.cpu()
                         )
+
                         results[task_id].append({
                             'fold': fold,
                             'repeat': repeat,
@@ -182,7 +195,7 @@ class TabArenaEvaluator:
         return aggregated_results
 
     # Helper to look whether a openML dataset is a binary classification task.
-    def _is_binary(self, dataset) -> bool:
+    def _is_in_max_classes(self, dataset, max_classes) -> bool:
         y = dataset.get_data(target=dataset.default_target_attribute)[1]
-        return len(np.unique(y)) == 2
+        return len(np.unique(y)) <= max_classes
 

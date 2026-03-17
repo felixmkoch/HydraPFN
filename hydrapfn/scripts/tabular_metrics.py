@@ -29,6 +29,29 @@ def mean_absolute_error_metric(target, pred):
     pred = torch.tensor(pred) if not torch.is_tensor(pred) else pred
     return torch.tensor(mean_absolute_error(target, pred))
 
+from sklearn.metrics import log_loss
+
+def log_loss_metric(target, pred):
+    #TODO: Check if this is correct in the first place.
+    target = torch.tensor(target) if not torch.is_tensor(target) else target
+    pred = torch.tensor(pred) if not torch.is_tensor(pred) else pred
+
+    target_np = target.detach().cpu().numpy()
+    pred_np = pred.detach().cpu().numpy()
+
+    try:
+        if len(torch.unique(target)) > 2:
+            # Multiclass case
+            return torch.tensor(log_loss(target_np, pred_np))
+        else:
+            # Binary case
+            if pred_np.ndim == 2:
+                pred_np = pred_np[:, 1]  # take prob of positive class
+            return torch.tensor(log_loss(target_np, pred_np))
+    except ValueError as e:
+        print(e)
+        return torch.tensor(np.nan)
+
 """
 ===============================
 Metrics calculation
