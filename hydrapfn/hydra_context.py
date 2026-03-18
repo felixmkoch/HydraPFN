@@ -342,7 +342,9 @@ class HydraModel(nn.Module):
                  initializer_config = None,
                  fused_add_norm = False,
                  residual_in_fp32 = False,
-                 device = "cpu",
+                 use_dual_cross_attention = False,
+                 num_cross_attention_heads: int = 4,
+                 device: str = "cpu",
                  dtype=None
                  ) -> None:
 
@@ -359,9 +361,12 @@ class HydraModel(nn.Module):
         self.initializer_config = initializer_config
         self.residual_in_fp32 = residual_in_fp32
         self.fused_add_norm = fused_add_norm
-        self.cross_attn = SimpleCrossAttention(dim=ninp, n_heads=4)
+        self.cross_attn = SimpleCrossAttention(dim=ninp, n_heads=num_cross_attention_heads) if use_cross_attention else None
+        self.dual_cross_attn = SimpleCrossAttention(dim=ninp, n_heads=num_cross_attention_heads) if use_dual_cross_attention else None  # Kind of like a "skip" connection to the cross-attention for the input encodings.
         print(f"Hydra with cross attention set to {use_cross_attention}")
+        print(f"Hydra with dual attention set to {use_dual_cross_attention}")
         self.use_cross_attention = use_cross_attention
+        self.use_dual_cross_attention = use_dual_cross_attention
 
         factory_kwargs = {"device": device, "dtype": dtype}
 
@@ -462,11 +467,22 @@ class HydraModel(nn.Module):
             # ---------- Cross Attention ----------
             if self.use_cross_attention:
 
-                conditioned_query = self.cross_attn(query_expanded, context_hidden)
+                if self.use_dual_cross_attention:
+                    # Expand raw context as well
+                    context_tokens_expanded = context_tokens.unsqueeze(0).expand(P, B, S, D)
+                    context_tokens_expanded = context_tokens_expanded.reshape(P * B, S, D)
+
+                    attn_hidden = self.cross_attn_hidden(query_expanded, context_hidden)
+                    attn_raw    = self.cross_attn_raw(query_expanded, context_tokens_expanded)
+
+                    conditioned_query = (attn_hidden + attn_raw) / math.sqrt(2)
+                else:
+                    conditioned_query = self.cross_attn(query_expanded, context_hidden)
+
                 conditioned_query = conditioned_query.permute(1, 0, 2)
 
-                decoded = self.decoder(conditioned_query)  # (Sq, P*B, n_out)
-                decoded = decoded.permute(1, 0, 2)         # (P*B, Sq, n_out)
+                decoded = self.decoder(conditioned_query)
+                decoded = decoded.permute(1, 0, 2)
 
             else:
 
@@ -485,8 +501,8 @@ class HydraModel(nn.Module):
             # Also average context hidden for logging
             context_hidden = context_hidden.reshape(P, B, S, D).mean(dim=0)
 
+        # Case when we don't use multiple permutations, so we just run the backbone once on the original context.
         else:
-
             context_hidden = self.mamba_backbone(
                 context_tokens,
                 inference_parameters=None,
@@ -494,12 +510,19 @@ class HydraModel(nn.Module):
 
             if self.use_cross_attention:
 
-                conditioned_query = self.cross_attn(query_tokens, context_hidden)
+                if self.use_dual_cross_attention:
+                    attn_hidden = self.cross_attn(query_tokens, context_hidden)
+                    attn_raw = self.dual_cross_attn(query_tokens, context_tokens)
+
+                    conditioned_query = (attn_hidden + attn_raw) / math.sqrt(2)     # Sqrt for scaling since the attn output is twice as large.
+                else:
+                    conditioned_query = self.cross_attn(query_tokens, context_hidden)
+
                 conditioned_query = conditioned_query.permute(1, 0, 2)
                 output = self.decoder(conditioned_query)
 
+            # If no cross attention is used.
             else:
-
                 full_sequence = torch.cat([context_hidden, query_tokens], dim=1)
                 full_sequence = full_sequence.permute(1, 0, 2)
                 decoded = self.decoder(full_sequence)

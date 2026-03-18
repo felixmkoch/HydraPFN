@@ -130,6 +130,7 @@ def train(
         model_saver = None,
         save_every_n_epochs=100,
         continue_training: dict = {},
+        use_dual_cross_attention: bool = False,
         **model_extra_args
 ):
     
@@ -183,6 +184,7 @@ def train(
                 n_out=n_out,
                 ninp=emsize,
                 nhid=nhid,
+                use_dual_cross_attention=use_dual_cross_attention,
                 y_encoder=y_encoder_generator(1, emsize),
                 num_layers=nlayers,
                 use_cross_attention=use_cross_attention,
