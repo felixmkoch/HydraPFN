@@ -84,7 +84,8 @@ class TabArenaEvaluator:
             task_metadata[task_id] = {
                 "dataset_id": dataset.id,
                 "dataset_name": dataset.name,
-                "n_samples": n_samples
+                "n_samples": n_samples,
+                "n_classes": len(np.unique(dataset.get_data(target=dataset.default_target_attribute)[1]))
             }
 
             # Load the data for each split
@@ -205,6 +206,7 @@ class TabArenaEvaluator:
                     "dataset_id": meta.get("dataset_id"),
                     "dataset_name": meta.get("dataset_name"),
                     "n_samples": meta.get("n_samples"),
+                    "n_classes": meta.get("n_classes"),
                     "mean_accuracy": mean_acc,
                     "std_accuracy": std_acc,
                     "mean_inference_time": mean_time,
