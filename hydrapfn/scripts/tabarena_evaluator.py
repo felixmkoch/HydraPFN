@@ -57,12 +57,6 @@ class TabArenaEvaluator:
             dataset = task.get_dataset()
             print(f"Task ID: {task.id}, Dataset ID: {dataset.id}, Dataset Name: {dataset.name}")
 
-            task_metadata[task_id] = {
-                "dataset_id": dataset.id,
-                "dataset_name": dataset.name,
-                "n_samples": n_samples
-            }
-
             n_samples = dataset.qualities["NumberOfInstances"]
             if n_samples > max_instances:
                 print(f"  Skipping task {task_id} due to number of instances ({n_samples}) exceeding max_instances ({max_instances})")
@@ -86,6 +80,12 @@ class TabArenaEvaluator:
                 else:
                     tabarena_repeats = 3
             print(f"TabArena Repeats: {tabarena_repeats} | Folds: {folds}")
+
+            task_metadata[task_id] = {
+                "dataset_id": dataset.id,
+                "dataset_name": dataset.name,
+                "n_samples": n_samples
+            }
 
             # Load the data for each split
             for repeat in range(tabarena_repeats):
