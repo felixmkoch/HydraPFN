@@ -123,14 +123,13 @@ def train(
         aggregate_k_gradients=1,
         train_mixed_precision=False, 
         evaluation_class: EvalHelper=None, 
-        use_cross_attention: bool = False,
         perm_reg_lam: float = None,         # Permutation Regularization weighting.
         config={},
         best_model_path: str = None,
         model_saver = None,
         save_every_n_epochs=100,
         continue_training: dict = {},
-        use_dual_cross_attention: bool = False,
+        cross_attention_mode: str = "none",
         **model_extra_args
 ):
     
@@ -184,10 +183,9 @@ def train(
                 n_out=n_out,
                 ninp=emsize,
                 nhid=nhid,
-                use_dual_cross_attention=use_dual_cross_attention,
+                cross_attention_mode=cross_attention_mode,
                 y_encoder=y_encoder_generator(1, emsize),
                 num_layers=nlayers,
-                use_cross_attention=use_cross_attention,
                 device=device
             )
         
