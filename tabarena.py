@@ -13,5 +13,6 @@ evaluator = TabArenaEvaluator()
 evaluator.eval_on_tabarena(
     model, 
     max_classes=10,
-    num_pcps=4
+    num_pcps=4,
+    csv_path="tabarena_results.csv"
     )
