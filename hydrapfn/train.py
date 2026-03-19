@@ -129,7 +129,7 @@ def train(
         model_saver = None,
         save_every_n_epochs=100,
         continue_training: dict = {},
-        cross_attention_mode: str = "none",
+        cross_attention_mode: str = "single",
         **model_extra_args
 ):
     
