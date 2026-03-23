@@ -338,11 +338,12 @@ class HydraModel(nn.Module):
                  norm_epsilon: float = 1e-5,
                  rms_norm: bool = False,
                  y_encoder=None,
-                 use_cross_attention=False,
+                 cross_attention_mode: str = "none",     # "none", "single", or "dual_sum" or "dual_concat"
                  initializer_config = None,
                  fused_add_norm = False,
                  residual_in_fp32 = False,
-                 device = "cpu",
+                 num_cross_attention_heads: int = 4,
+                 device: str = "cpu",
                  dtype=None
                  ) -> None:
 
@@ -359,9 +360,15 @@ class HydraModel(nn.Module):
         self.initializer_config = initializer_config
         self.residual_in_fp32 = residual_in_fp32
         self.fused_add_norm = fused_add_norm
-        self.cross_attn = SimpleCrossAttention(dim=ninp, n_heads=4)
-        print(f"Hydra with cross attention set to {use_cross_attention}")
-        self.use_cross_attention = use_cross_attention
+        self.cross_attention_mode = cross_attention_mode
+        self.cross_attn = SimpleCrossAttention(dim=ninp, n_heads=num_cross_attention_heads) if cross_attention_mode in ["single", "dual_sum", "dual_concat"] else None
+        self.dual_cross_attn = SimpleCrossAttention(dim=ninp, n_heads=num_cross_attention_heads) if cross_attention_mode in ["dual_sum", "dual_concat"] else None  # Kind of like a "skip" connection to the cross-attention for the input encodings.
+        print(f"Cross Attention mode set to {cross_attention_mode}")
+        if self.cross_attention_mode == "dual_concat":
+            self.ca_fusion_proj = nn.Sequential(
+                nn.Linear(2 * ninp, ninp),
+                nn.GELU(),
+            )
 
         factory_kwargs = {"device": device, "dtype": dtype}
 
@@ -460,22 +467,39 @@ class HydraModel(nn.Module):
             query_expanded = query_expanded.reshape(P * B, Sq, D)
 
             # ---------- Cross Attention ----------
-            if self.use_cross_attention:
+            if self.cross_attention_mode != "none":
 
-                conditioned_query = self.cross_attn(query_expanded, context_hidden)
+                if self.cross_attention_mode == "single":
+
+                    conditioned_query = self.cross_attn(query_expanded, context_hidden)
+
+                else:
+                    # Expand raw context
+                    context_tokens_expanded = context_tokens.unsqueeze(0).expand(P, B, S, D)
+                    context_tokens_expanded = context_tokens_expanded.reshape(P * B, S, D)
+
+                    attn_hidden = self.cross_attn(query_expanded, context_hidden)
+                    attn_raw    = self.dual_cross_attn(query_expanded, context_tokens_expanded)
+
+                    if self.cross_attention_mode == "dual_sum":
+                        conditioned_query = (attn_hidden + attn_raw) / math.sqrt(2)
+
+                    elif self.cross_attention_mode == "dual_concat":
+                        fused = torch.cat([attn_hidden, attn_raw], dim=-1)
+                        conditioned_query = self.ca_fusion_proj(fused)
+
                 conditioned_query = conditioned_query.permute(1, 0, 2)
 
-                decoded = self.decoder(conditioned_query)  # (Sq, P*B, n_out)
-                decoded = decoded.permute(1, 0, 2)         # (P*B, Sq, n_out)
+                decoded = self.decoder(conditioned_query)
+                decoded = decoded.permute(1, 0, 2)
 
             else:
-
                 full_sequence = torch.cat([context_hidden, query_expanded], dim=1)
                 full_sequence = full_sequence.permute(1, 0, 2)
 
                 decoded = self.decoder(full_sequence)
-                decoded = decoded[-Sq:]                    # keep query outputs
-                decoded = decoded.permute(1, 0, 2)         # (P*B, Sq, n_out)
+                decoded = decoded[-Sq:]
+                decoded = decoded.permute(1, 0, 2)
 
             # Average predictions over permutations
             decoded = decoded.reshape(P, B, Sq, -1)
@@ -485,21 +509,34 @@ class HydraModel(nn.Module):
             # Also average context hidden for logging
             context_hidden = context_hidden.reshape(P, B, S, D).mean(dim=0)
 
+        # Case when we don't use multiple permutations, so we just run the backbone once on the original context.
         else:
-
             context_hidden = self.mamba_backbone(
                 context_tokens,
                 inference_parameters=None,
             )
 
-            if self.use_cross_attention:
+            if self.cross_attention_mode != "none":
 
-                conditioned_query = self.cross_attn(query_tokens, context_hidden)
+                if self.cross_attention_mode == "single":
+
+                    conditioned_query = self.cross_attn(query_tokens, context_hidden)
+
+                else:
+                    attn_hidden = self.cross_attn(query_tokens, context_hidden)
+                    attn_raw    = self.dual_cross_attn(query_tokens, context_tokens)
+
+                    if self.cross_attention_mode == "dual_sum":
+                        conditioned_query = (attn_hidden + attn_raw) / math.sqrt(2)
+
+                    elif self.cross_attention_mode == "dual_concat":
+                        fused = torch.cat([attn_hidden, attn_raw], dim=-1)
+                        conditioned_query = self.ca_fusion_proj(fused)
+
                 conditioned_query = conditioned_query.permute(1, 0, 2)
                 output = self.decoder(conditioned_query)
 
             else:
-
                 full_sequence = torch.cat([context_hidden, query_tokens], dim=1)
                 full_sequence = full_sequence.permute(1, 0, 2)
                 decoded = self.decoder(full_sequence)

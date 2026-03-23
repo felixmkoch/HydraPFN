@@ -43,18 +43,18 @@ device = "cuda:0"
 
 # Reduce size for quick smoke run (safe, behaviour unchanged)
 config['batch_size'] = 32
-config['emsize'] = 256
+config['emsize'] = 64
 config["epochs"] = 10
 config["bptt"] = 128
 config["max_eval_pos"] = 120
 
 config["num_steps"] = 16
 
-config["nlayers"] = 12
+config["nlayers"] = 8
 config["enable_autocast"] = True
 
-# Using cross-attention to combine the hidden state resulting from hydra with the query examples.
-config["use_cross_attention"] = True
+# Mode of the cross attention. "none" -> No cross-attn; "single" -> normal cross-attn; "dual_sum" -> sum with input enc; "dual_concat" -> concat with input enc. 
+config["cross_attention_mode"] = "dual_concat"
 # Regularization to punish deviations from permutated hidden states.
 config["perm_reg_lam"] = 0.0
 

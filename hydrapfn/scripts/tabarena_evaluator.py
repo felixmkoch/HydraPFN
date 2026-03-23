@@ -7,16 +7,22 @@ import pandas as pd
 
 from hydrapfn.scripts.hydra_prediction_interface import hydra_predict
 from hydrapfn.scripts.tabular_metrics import accuracy_metric
+from hydrapfn.scripts.tabular_metrics import auc_metric
+from hydrapfn.scripts.tabular_metrics import log_loss_metric
 
 class TabArenaEvaluator:
 
     def eval_on_tabarena(
             self,
             model,
+            num_pcps: int = 1,
             is_lite: bool = False,
             tabarena_version: str = "tabarena-v0.1",
             max_instances: int = 2_000,
-            only_binary_classification: bool = True):
+            max_classes: int = None,
+            metric = auc_metric,
+            matric_multiclass = log_loss_metric,
+            csv_path: str = None):
         """
         Code mostly from https://github.com/autogluon/tabarena/blob/main/examples/benchmarking/run_get_tabarena_datasets_from_openml.py
         """
@@ -42,6 +48,8 @@ class TabArenaEvaluator:
         if tabarena_lite:
             print("TabArena Lite is enabled. Getting first repeat of first fold for each task.")
 
+        task_metadata = {}
+
         for task_id in task_ids:
             results[task_id] = []
 
@@ -55,8 +63,8 @@ class TabArenaEvaluator:
                 continue
 
             # binary classification filter, applied after sample-size
-            if only_binary_classification and not self._is_binary(dataset):
-                print(f"  Skipping task {task_id} because it is not binary")
+            if max_classes and not self._is_in_max_classes(dataset, max_classes):
+                print(f"  Skipping task {task_id} because it is not in the specified number of classes")
                 continue
 
             # Get the number of folds and repeats used in TabArena
@@ -72,6 +80,13 @@ class TabArenaEvaluator:
                 else:
                     tabarena_repeats = 3
             print(f"TabArena Repeats: {tabarena_repeats} | Folds: {folds}")
+
+            task_metadata[task_id] = {
+                "dataset_id": dataset.id,
+                "dataset_name": dataset.name,
+                "n_samples": n_samples,
+                "n_classes": len(np.unique(dataset.get_data(target=dataset.default_target_attribute)[1]))
+            }
 
             # Load the data for each split
             for repeat in range(tabarena_repeats):
@@ -133,6 +148,7 @@ class TabArenaEvaluator:
                             categorical_feats=categorical_feats,
                             inference_mode=True,
                             extend_features=True,
+                            num_pcps=num_pcps
                         )
                         
                         y_test_true = eval_ys[eval_position:, 0]
@@ -140,10 +156,17 @@ class TabArenaEvaluator:
                         # remove batch dimension - its always of length 0.
                         test_outputs = outputs[0]
 
-                        accuracy = accuracy_metric(
+                        # For multiclass classification the log loss is used in TabArenav0.1
+                        if len(torch.unique(y_test_true)) > 2:
+                            metric_used = matric_multiclass
+                        else:
+                            metric_used = metric
+
+                        accuracy = metric_used(
                             y_test_true.cpu(),
                             test_outputs.cpu()
                         )
+
                         results[task_id].append({
                             'fold': fold,
                             'repeat': repeat,
@@ -157,23 +180,53 @@ class TabArenaEvaluator:
         
         # Aggregate results across all tasks and folds
         aggregated_results = {}
+        dataset_rows = [] 
+
         for task_id in results:
             if results[task_id]:
                 accuracies = [r['accuracy'] for r in results[task_id]]
                 inference_times = [r['inference_time'] for r in results[task_id]]
+
+                mean_acc = np.mean(accuracies)
+                std_acc = np.std(accuracies)
+                mean_time = np.mean(inference_times)
+                num_splits = len(accuracies)
+
                 aggregated_results[task_id] = {
-                    'mean_accuracy': np.mean(accuracies),
-                    'std_accuracy': np.std(accuracies),
-                    'mean_inference_time': np.mean(inference_times),
-                    'num_splits': len(accuracies)
+                    'mean_accuracy': mean_acc,
+                    'std_accuracy': std_acc,
+                    'mean_inference_time': mean_time,
+                    'num_splits': num_splits
                 }
+
+                # NEW: build row for CSV
+                meta = task_metadata.get(task_id, {})
+                dataset_rows.append({
+                    "task_id": task_id,
+                    "dataset_id": meta.get("dataset_id"),
+                    "dataset_name": meta.get("dataset_name"),
+                    "n_samples": meta.get("n_samples"),
+                    "n_classes": meta.get("n_classes"),
+                    "mean_accuracy": mean_acc,
+                    "std_accuracy": std_acc,
+                    "mean_inference_time": mean_time,
+                    "num_splits": num_splits
+                })
+
                 print("-" * 42)
-                print(f"Task {task_id}: Mean Accuracy = {aggregated_results[task_id]['mean_accuracy']:.4f} ± {aggregated_results[task_id]['std_accuracy']:.4f}")
+                print(f"Task {task_id}: Mean Accuracy = {mean_acc:.4f} ± {std_acc:.4f}")
                 print("-" * 42)
 
         # Compute overall average accuracy across all tasks
         all_accuracies = [aggregated_results[tid]['mean_accuracy'] for tid in aggregated_results]
         overall_accuracy = np.mean(all_accuracies) if all_accuracies else 0.0
+
+        # Save dataset-wise results to CSV
+        if csv_path:
+            df = pd.DataFrame(dataset_rows)
+            df = df.sort_values(by="mean_accuracy", ascending=False)
+            df.to_csv(csv_path, index=False)
+            print(f"\nSaved dataset-wise results to {csv_path}")
         
         print(f"\n=== Overall Results ===")
         print(f"Overall Mean Accuracy: {overall_accuracy:.4f}")
@@ -182,7 +235,7 @@ class TabArenaEvaluator:
         return aggregated_results
 
     # Helper to look whether a openML dataset is a binary classification task.
-    def _is_binary(self, dataset) -> bool:
+    def _is_in_max_classes(self, dataset, max_classes) -> bool:
         y = dataset.get_data(target=dataset.default_target_attribute)[1]
-        return len(np.unique(y)) == 2
+        return len(np.unique(y)) <= max_classes
 
