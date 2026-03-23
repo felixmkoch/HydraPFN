@@ -5,6 +5,7 @@ import hydrapfn.encoders as encoders
 from hydrapfn.train import Losses
 from hydrapfn.train import train
 from hydrapfn.utils import get_uniform_single_eval_pos_sampler
+import hydrapfn.tabicl_prior as tabicl_prior_module
 
 
 def make_get_batch(model_proto, **extra_kwargs):
@@ -86,29 +87,53 @@ def train_model(
     #----------------------------------------------------------------------
     #                 Setup Prior Configuration
     #----------------------------------------------------------------------
+    
+    # Check if using tabicl_prior (default: False, use old priors)
+    use_tabicl_prior = config.get('use_tabicl_prior', False)
+    
+    print("\n" + "="*80)
+    print("PRIOR CONFIGURATION")
+    print("="*80)
+    
+    if use_tabicl_prior:
+        # Use tabicl_prior instead of old priors
+        print("Using TabICL Prior for training")
+        print("- Data generation: TabICL PriorDataset")
+        print("- Features: In-context learning on synthetic tabular data")
+        model_proto = tabicl_prior_module.tabicl_prior
+        prior_hyperparameters = {
+            'batch_size': config['batch_size'],
+        }
+        extra_kwargs = {}
+    else:
+        # Use old priors (default behavior)
+        print("Using Old Priors (default) for training")
+        print("- Data generation: fast_gp + mlp prior_bag")
+        print("- Features: Differentiable hyperparameters with flexible categorical sampling")
+        # Assume config sets prior_type to "prior_bag", which is the most efficient according to TabPFNv1.0
+        get_batch_gp = make_get_batch(priors.fast_gp)
+        get_batch_mlp = make_get_batch(priors.mlp)
 
-    # Assume config sets prior_type to "prior_bag", which is the most efficient according to TabPFNv1.0
-    get_batch_gp = make_get_batch(priors.fast_gp)
-    get_batch_mlp = make_get_batch(priors.mlp)
+        # This is for the config variable "flexible" == true. We assume that htis is the default here.
+        get_batch_gp = make_get_batch(priors.flexible_categorical, **{'get_batch': get_batch_gp})
+        get_batch_mlp = make_get_batch(priors.flexible_categorical, **{'get_batch': get_batch_mlp})
 
-    # This is for the config variable "flexible" == true. We assume that htis is the default here.
-    get_batch_gp = make_get_batch(priors.flexible_categorical, **{'get_batch': get_batch_gp})
-    get_batch_mlp = make_get_batch(priors.flexible_categorical, **{'get_batch': get_batch_mlp})
+        prior_bag_hyperparameters = {'prior_bag_get_batch': (get_batch_gp, get_batch_mlp), 'prior_bag_exp_weights_1': 2.0}
+        prior_hyperparameters = {**get_mlp_prior_hyperparameters(config), **get_gp_prior_hyperparameters(config), **prior_bag_hyperparameters}
+        model_proto = priors.prior_bag
 
-    prior_bag_hyperparameters = {'prior_bag_get_batch': (get_batch_gp, get_batch_mlp), 'prior_bag_exp_weights_1': 2.0}
-    prior_hyperparameters = {**get_mlp_prior_hyperparameters(config), **get_gp_prior_hyperparameters(config), **prior_bag_hyperparameters}
-    model_proto = priors.prior_bag
+        # This is for the config variable "flexible" == true. We assume that htis is the default here.
+        prior_hyperparameters['normalize_labels'] = True
+        prior_hyperparameters['check_is_compatible'] = True
+        prior_hyperparameters['prior_mlp_scale_weights_sqrt'] = config['prior_mlp_scale_weights_sqrt'] if 'prior_mlp_scale_weights_sqrt' in prior_hyperparameters else None
+        prior_hyperparameters['rotate_normalized_labels'] = config['rotate_normalized_labels'] if 'rotate_normalized_labels' in prior_hyperparameters else True
 
-    # This is for the config variable "flexible" == true. We assume that htis is the default here.
-    prior_hyperparameters['normalize_labels'] = True
-    prior_hyperparameters['check_is_compatible'] = True
-    prior_hyperparameters['prior_mlp_scale_weights_sqrt'] = config['prior_mlp_scale_weights_sqrt'] if 'prior_mlp_scale_weights_sqrt' in prior_hyperparameters else None
-    prior_hyperparameters['rotate_normalized_labels'] = config['rotate_normalized_labels'] if 'rotate_normalized_labels' in prior_hyperparameters else True
+        # We assume "differentiable" in the config is always true
+        get_batch_base = make_get_batch(model_proto)
+        extra_kwargs = {'get_batch': get_batch_base, 'differentiable_hyperparameters': config['differentiable_hyperparameters']}
+        model_proto = priors.differentiable_prior
 
-    # We assume "differentiable" in the config is always true
-    get_batch_base = make_get_batch(model_proto)
-    extra_kwargs = {'get_batch': get_batch_base, 'differentiable_hyperparameters': config['differentiable_hyperparameters']}
-    model_proto = priors.differentiable_prior
+    print("="*80 + "\n")
     use_style = True
 
     # Because config['nan_prob_unknown_reason'] > 0.0
@@ -129,12 +154,19 @@ def train_model(
 
     single_eval_pos_generator = get_uniform_single_eval_pos_sampler(config.get('max_eval_pos', config['bptt']), min_len=config.get('min_eval_pos', 0))
 
-    extra_prior_kwargs_dict={
-        'num_features': config['num_features'],
-        'hyperparameters': prior_hyperparameters,
-        'batch_size_per_gp_sample': config.get('batch_size_per_gp_sample', None),
-        **extra_kwargs
-    }
+    if use_tabicl_prior:
+        extra_prior_kwargs_dict={
+            'num_features': config['num_features'],
+            'hyperparameters': prior_hyperparameters,
+            'seq_len_maximum': config.get('bptt', 512),
+        }
+    else:
+        extra_prior_kwargs_dict={
+            'num_features': config['num_features'],
+            'hyperparameters': prior_hyperparameters,
+            'batch_size_per_gp_sample': config.get('batch_size_per_gp_sample', None),
+            **extra_kwargs
+        }
 
     _, _, model, optimizer, _ = train(
         priordataloader_class = model_proto.DataLoader,

@@ -58,6 +58,9 @@ config["cross_attention_mode"] = "dual_concat"
 # Regularization to punish deviations from permutated hidden states.
 config["perm_reg_lam"] = 0.0
 
+# Prior selection: False = old priors (fast_gp + mlp), True = TabICL prior
+config["use_tabicl_prior"] = False
+
 #------------------------------------------------------------------------------------------------
 #                                           WANDB
 #------------------------------------------------------------------------------------------------
