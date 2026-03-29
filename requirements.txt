@@ -1,4 +1,3 @@
-# Please use python V 3.7 to be compatible with all packages
 gpytorch==1.5.0
 #torch==1.9.0
 scikit-learn==1.2.2
