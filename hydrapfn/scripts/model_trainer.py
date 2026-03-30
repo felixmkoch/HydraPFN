@@ -65,8 +65,8 @@ def configure_tabicl_prior(config):
             min_features=2,
             max_features=config["num_features"],
             max_classes=config["max_num_classes"],
-            min_seq_len=8,  # Choose 8 because of the conv. kernel size of Hydra (7)
-            max_seq_len=config["bptt"],
+            min_seq_len=config["bptt"],  # Fixed to bptt for consistency
+            max_seq_len=config["bptt"],  # Fixed to bptt for consistency
             log_seq_len=False,  # Default from TabICLv2
             seq_len_per_gp=False,
             min_train_size=0.1,
