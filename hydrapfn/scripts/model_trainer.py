@@ -6,6 +6,9 @@ from hydrapfn.train import Losses
 from hydrapfn.train import train
 from hydrapfn.utils import get_uniform_single_eval_pos_sampler
 
+from hydrapfn.tabicl_prior.dataset import PriorDataset
+from torch.utils.data import DataLoader
+from torch.multiprocessing import set_start_method
 
 def make_get_batch(model_proto, **extra_kwargs):
         
@@ -47,6 +50,46 @@ def get_mlp_prior_hyperparameters(config):
 
 def get_gp_prior_hyperparameters(config):
     return {hp: (list(config[hp].values())[0]) if type(config[hp]) is dict else config[hp] for hp in config}
+
+
+def configure_tabicl_prior(config):
+        """Set up a tabular dataset generator for synthetic data during training."""
+        # Code from https://github.com/soda-inria/tabicl/tree/main
+        # Currently static with their configuration. TODO: Make dynamic with customizable configuration.
+
+        print("Using TabICL Prior")
+
+        dataset = PriorDataset(
+            batch_size=config["batch_size"],
+            batch_size_per_gp=4,
+            min_features=2,
+            max_features=config["num_features"],
+            max_classes=config["max_num_classes"],
+            min_seq_len=8,  # Choose 8 because of the conv. kernel size of Hydra (7)
+            max_seq_len=config["bptt"],
+            log_seq_len=False,  # Default from TabICLv2
+            seq_len_per_gp=False,
+            min_train_size=0.1,
+            max_train_size=0.9,
+            replay_small=False,
+            prior_type="mix_scm",
+            device="cuda",
+            n_jobs=1,  # Set to 1 to avoid nested parallelism during DDP
+        )
+
+        # Create dataloader for efficient loading and prefetching
+        dataloader = DataLoader(
+            dataset,
+            batch_size=None,  # No additional batching since PriorDataset handles batching internally
+            shuffle=False,
+            num_workers=0,
+            prefetch_factor=None,
+            pin_memory=False,
+            pin_memory_device="",
+        )
+
+        return dataloader
+
 
 #----------------------------------------------------------------------
 #               TRAIN MODEL FUNCITON
@@ -109,7 +152,6 @@ def train_model(
     get_batch_base = make_get_batch(model_proto)
     extra_kwargs = {'get_batch': get_batch_base, 'differentiable_hyperparameters': config['differentiable_hyperparameters']}
     model_proto = priors.differentiable_prior
-    use_style = True
 
     # Because config['nan_prob_unknown_reason'] > 0.0
     encoder = encoders.NanHandlingEncoder
@@ -121,6 +163,13 @@ def train_model(
     config.setdefault('mix_activations', False)
     config.setdefault('bptt_extra_samples', None)
     config['eval_positions'] = [int(config['bptt'] * 0.95)] if config['bptt_extra_samples'] is None else [int(config['bptt'])]
+
+
+    #----------------------------------------------------------------------
+    #                 Setup Prior Configuration for TabICL Prior
+    #----------------------------------------------------------------------
+
+    tabicl_dataloader = configure_tabicl_prior(config)
 
 
     #----------------------------------------------------------------------
@@ -153,6 +202,7 @@ def train_model(
         best_model_path = best_model_path,
         model_saver = model_saver,
         continue_training = continue_training,
+        tabicl_dataloader = tabicl_dataloader,
         **config
     )
 

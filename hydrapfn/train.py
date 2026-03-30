@@ -130,6 +130,8 @@ def train(
         save_every_n_epochs=100,
         continue_training: dict = {},
         cross_attention_mode: str = "single",
+        tabicl_dataloader = None,
+        use_tabicl_prior = False,
         **model_extra_args
 ):
     
@@ -147,7 +149,11 @@ def train(
     
     dl = priordataloader_class(num_steps=steps_per_epoch, batch_size=batch_size, eval_pos_seq_len_sampler=eval_pos_seq_len_sampler, seq_len_maximum=bptt, device=device, **extra_prior_kwargs_dict)
 
-    encoder = encoder_generator(dl.num_features, emsize)
+    if use_tabicl_prior:
+        dl = iter(tabicl_dataloader)
+
+    num_features = config["num_features"]
+    encoder = encoder_generator(num_features, emsize)
 
     if isinstance(criterion, nn.GaussianNLLLoss): n_out = 2
     elif isinstance(criterion, nn.CrossEntropyLoss): n_out = criterion.weight.shape[0]
@@ -215,13 +221,23 @@ def train(
         total_positional_losses_recorded = 0
         nan_steps = 0
 
-        # Check if permutation regularization needs to be applied.
-        do_compute_perm_reg = perm_reg_lam is not None and perm_reg_lam != 0.0
+        for batch, batch_item in enumerate(dl):
+            # TabICL uses an infinite samper - so we need to manually cancel this then.
+            if use_tabicl_prior:
+                data, targets, d, seq_len, single_eval_pos = batch_item
+                single_eval_pos = single_eval_pos[0].item()
+                data = data.transpose(0, 1)
+                targets = targets.transpose(0, 1)
+                data = (None, data, targets)
 
-        for batch, (data, targets, single_eval_pos) in enumerate(dl):
+            else:
+                data, targets, single_eval_pos = batch_item
+                single_eval_pos = single_eval_pos_gen() if callable(single_eval_pos_gen) else single_eval_pos_gen
+
+            if batch > steps_per_epoch:
+                break
             cm = nullcontext()
             with cm:
-                single_eval_pos = single_eval_pos_gen() if callable(single_eval_pos_gen) else single_eval_pos_gen
                 # Quickfix: Hydra with the application only on the context cannot handle sequences < 7 long (conv kernel)
                 if single_eval_pos < 8:
                     continue
