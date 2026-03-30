@@ -293,7 +293,7 @@ def train(
                         nn.functional.one_hot(torch.tensor(single_eval_pos), bptt)
                 nan_steps += nan_share
 
-        return total_loss / (steps_per_epoch), total_positional_losses, nan_steps.cpu().item()/(batch+1), (reg_losses / len(dl))
+        return total_loss / (steps_per_epoch), total_positional_losses, nan_steps.cpu().item()/(batch+1), (reg_losses / steps_per_epoch)
     
 
     #-----------------------------------------------------------------------------
