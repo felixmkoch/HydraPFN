@@ -15,8 +15,7 @@ RUN apt-get update && \
 
 RUN pip install uv
 
-# install project (replace HYDRAPFN_DIR_PATH with actual path)
-RUN cd HYDRAPFN_DIR_PATH
+# install project
 RUN uv sync
 RUN uv pip install -e .
 
