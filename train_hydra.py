@@ -42,11 +42,11 @@ device = "cuda:0"
 #------------------------------------------------------------------------------------------------
 
 # Reduce size for quick smoke run (safe, behaviour unchanged)
-config['batch_size'] = 32
-config['emsize'] = 64
+config['batch_size'] = 16
+config['emsize'] = 128
 config["epochs"] = 10
 config["bptt"] = 128
-config["max_eval_pos"] = 120
+config["max_eval_pos"] = 100
 
 config["num_steps"] = 16
 
@@ -54,11 +54,11 @@ config["nlayers"] = 8
 config["enable_autocast"] = True
 
 # Mode of the cross attention. "none" -> No cross-attn; "single" -> normal cross-attn; "dual_sum" -> sum with input enc; "dual_concat" -> concat with input enc. 
-config["cross_attention_mode"] = "dual_concat"
+config["cross_attention_mode"] = "single"
 # Regularization to punish deviations from permutated hidden states.
 config["perm_reg_lam"] = 0.0
 
-config["use_tabicl_prior"] = True
+config["use_tabicl_prior"] = False
 
 #------------------------------------------------------------------------------------------------
 #                                           WANDB
