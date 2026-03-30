@@ -65,7 +65,7 @@ def configure_tabicl_prior(config):
             min_features=2,
             max_features=config["num_features"],
             max_classes=config["max_num_classes"],
-            min_seq_len=config["bptt"],  # Fixed to bptt for consistency
+            min_seq_len=None,  # Just as in TabICLv2
             max_seq_len=config["bptt"],  # Fixed to bptt for consistency
             log_seq_len=False,  # Default from TabICLv2
             seq_len_per_gp=False,
