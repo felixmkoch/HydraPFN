@@ -10,7 +10,8 @@ from hydrapfn.utils import get_cosine_schedule_with_warmup
 from hydrapfn.utils import init_dist
 import hydrapfn.utils as utils
 from hydrapfn.scripts import tabular_metrics
-from hydrapfn.hydra_context import HydraModel
+#from hydrapfn.hydra_context import HydraModel
+from hydrapfn.hydra_icl import HydraModel
 from hydrapfn.scripts.eval_helper import EvalHelper
 
 from hydra.modules.hydra import Hydra
@@ -192,6 +193,7 @@ def train(
                 cross_attention_mode=cross_attention_mode,
                 y_encoder=y_encoder_generator(1, emsize),
                 num_layers=nlayers,
+                use_col_embedding=config.get('use_col_embedding', False),
                 device=device
             )
         
@@ -229,7 +231,6 @@ def train(
                 data = data.transpose(0, 1)
                 targets = targets.transpose(0, 1)
                 data = (None, data, targets)
-
             else:
                 data, targets, single_eval_pos = batch_item
                 single_eval_pos = single_eval_pos_gen() if callable(single_eval_pos_gen) else single_eval_pos_gen
