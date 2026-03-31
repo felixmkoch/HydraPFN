@@ -728,6 +728,10 @@ class InferenceManager:
         else:
             self.exe_device = device
 
+        if self.exe_device.type == "cuda" and self.exe_device.index is None:
+            # normalize to explicit index for cuda APIs that require it.
+            self.exe_device = torch.device("cuda", torch.cuda.current_device())
+
         # Initialize buffer pool
         self._buffer_pool = PinnedBufferPool()
 
@@ -778,9 +782,18 @@ class InferenceManager:
         """
         if not torch.cuda.is_available() or self.exe_device.type != "cuda":
             return 0.0
+
+        # torch.cuda.mem_get_info requires an integer index or a device with
+        # explicit index (e.g., cuda:0). Some environments provide 'cuda'
+        # without index, so resolve to current device.
+        if self.exe_device.index is None:
+            gpu_index = torch.cuda.current_device()
+        else:
+            gpu_index = self.exe_device.index
+
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
-        return torch.cuda.mem_get_info(self.exe_device)[0] / (1024 * 1024)
+        return torch.cuda.mem_get_info(gpu_index)[0] / (1024 * 1024)
 
     def get_available_disk_space(self, path: Optional[str]) -> float:
         """Get available disk space at the specified path in MB.
