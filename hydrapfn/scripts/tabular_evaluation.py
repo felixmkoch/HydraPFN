@@ -58,7 +58,7 @@ def evaluate_position(X,
                       ds_name, 
                       metric_used=None, 
                       split_number=1,
-                      device='cuda', 
+                      device='cuda:0', 
                       num_pcps=1,
                       **kwargs):
     

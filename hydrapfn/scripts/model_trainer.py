@@ -97,7 +97,7 @@ def configure_tabicl_prior(config):
 def train_model(
         config: dict,           # Config containing training information.
         evaluation_class = None,
-        device: str = "cuda",   # Default device to be train on.
+        device: str = "cuda:0",   # Default device to be train on.
         best_model_path: str = None,  # Path to save best model checkpoint
         model_saver = None,      # Function to save model checkpoints
         continue_training: dict = {}    # Dict containing information about the training continue.
