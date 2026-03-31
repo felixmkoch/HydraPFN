@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
 
 requires-python = ">=3.10"
 
@@ -36,3 +35,6 @@ gpu-only = [
 extra-index-url = ["https://download.pytorch.org/whl/cu128"]
 index-strategy = "unsafe-best-match"
 default-groups = ["gpu-only"]
+
+[tool.setuptools]
+packages = ["hydrapfn"]
