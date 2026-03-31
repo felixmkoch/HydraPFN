@@ -5,15 +5,10 @@ from torch import nn, Tensor
 
 from mamba_ssm.ops.triton.layer_norm import RMSNorm, layer_norm_fn
 
-from torch import nn
 import math
-import torch
 import copy
 from functools import partial
-from mamba_ssm.modules.mamba_simple import Mamba
 from hydra.modules.hydra import Hydra
-from mamba_ssm.modules.mamba2 import Mamba2
-from mamba_ssm.modules.block import Block
 from mamba_ssm.modules.mlp import GatedMLP
 from mamba_ssm.modules.mha import MHA
 
@@ -288,272 +283,262 @@ class HydraBackbone(nn.Module):
         return hidden_states
 
 
+# =========================
+# CROSS ATTENTION (FIXED)
+# =========================
+
 class SimpleCrossAttention(nn.Module):
     def __init__(self, dim, n_heads=4):
         super().__init__()
+        assert dim % n_heads == 0
+
         self.n_heads = n_heads
-        self.dim = dim
         self.head_dim = dim // n_heads
-        assert self.head_dim * n_heads == dim, "dim must be divisible by n_heads"
 
         self.q_proj = nn.Linear(dim, dim)
         self.k_proj = nn.Linear(dim, dim)
         self.v_proj = nn.Linear(dim, dim)
         self.out_proj = nn.Linear(dim, dim)
 
+        self.norm_q = nn.LayerNorm(dim)
+        self.norm_kv = nn.LayerNorm(dim)
+
     def forward(self, query, context):
-        # query: (B, Nq, D)
-        # context: (B, Nc, D)
+        query = self.norm_q(query)
+        context = self.norm_kv(context)
+
         B, Nq, D = query.shape
         Nc = context.shape[1]
 
-        # linear projections
-        Q = self.q_proj(query).view(B, Nq, self.n_heads, self.head_dim).transpose(1, 2)  # (B, H, Nq, Hd)
-        K = self.k_proj(context).view(B, Nc, self.n_heads, self.head_dim).transpose(1, 2)  # (B, H, Nc, Hd)
-        V = self.v_proj(context).view(B, Nc, self.n_heads, self.head_dim).transpose(1, 2)  # (B, H, Nc, Hd)
+        Q = self.q_proj(query).view(B, Nq, self.n_heads, self.head_dim).transpose(1, 2)
+        K = self.k_proj(context).view(B, Nc, self.n_heads, self.head_dim).transpose(1, 2)
+        V = self.v_proj(context).view(B, Nc, self.n_heads, self.head_dim).transpose(1, 2)
 
-        # scaled dot-product attention
-        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)  # (B, H, Nq, Nc)
-        attn_weights = torch.softmax(attn_scores, dim=-1)
-        context_info = torch.matmul(attn_weights, V)  # (B, H, Nq, Hd)
+        attn = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        attn = torch.softmax(attn, dim=-1)
 
-        # merge heads
-        context_info = context_info.transpose(1, 2).contiguous().view(B, Nq, D)
-        return self.out_proj(context_info) + query  # residual connection
+        out = torch.matmul(attn, V)
+        out = out.transpose(1, 2).contiguous().view(B, Nq, D)
+
+        return query + self.out_proj(out)
 
 
+# =========================
+# MODEL
+# =========================
 
 class HydraModel(nn.Module):
-    '''
-    Actual full Hydra Model used.
-    '''
-
-    def __init__(self,
-                 encoder,
-                 n_out,
-                 ninp,
-                 nhid,
-                 num_layers: int = 1,
-                 ssm_config = None,
-                 norm_epsilon: float = 1e-5,
-                 rms_norm: bool = False,
-                 y_encoder=None,
-                 cross_attention_mode: str = "none",     # "none", "single", or "dual_sum" or "dual_concat"
-                 initializer_config = None,
-                 fused_add_norm = False,
-                 residual_in_fp32 = False,
-                 num_cross_attention_heads: int = 4,
-                 device: str = "cpu",
-                 dtype=None
-                 ) -> None:
-
+    def __init__(
+        self,
+        encoder,
+        y_encoder,
+        n_out,
+        ninp,
+        nhid,
+        num_layers=1,
+        cross_attention_mode="single",  # "single", "dual_sum", "dual_concat"
+        num_heads=4,
+        device="cpu",
+        dtype=None,
+    ):
         super().__init__()
-        self.model_type = 'mamba-ssm'
+
         self.encoder = encoder
-        self.num_layers = num_layers
-        self.device = device
-        self.dtype = dtype
-        self.ssm_config = ssm_config
-        self.ssm_config = {"layer": "Hydra"}       # Specify the mamba version used
-        self.rms_norm = rms_norm
         self.y_encoder = y_encoder
-        self.initializer_config = initializer_config
-        self.residual_in_fp32 = residual_in_fp32
-        self.fused_add_norm = fused_add_norm
-        self.cross_attention_mode = cross_attention_mode
-        self.cross_attn = SimpleCrossAttention(dim=ninp, n_heads=num_cross_attention_heads) if cross_attention_mode in ["single", "dual_sum", "dual_concat"] else None
-        self.dual_cross_attn = SimpleCrossAttention(dim=ninp, n_heads=num_cross_attention_heads) if cross_attention_mode in ["dual_sum", "dual_concat"] else None  # Kind of like a "skip" connection to the cross-attention for the input encodings.
-        print(f"Cross Attention mode set to {cross_attention_mode}")
-        if self.cross_attention_mode == "dual_concat":
-            self.ca_fusion_proj = nn.Sequential(
+        self.mode = cross_attention_mode
+
+        # ---- backbone (same style as before) ----
+        self.backbone = HydraBackbone(
+            d_model=ninp,
+            num_layers=num_layers,
+            device=device,
+            dtype=dtype,
+        )
+
+        # ---- cross attention ----
+        self.cross_attn = SimpleCrossAttention(ninp, num_heads)
+
+        if self.mode in ["dual_sum", "dual_concat"]:
+            self.cross_attn_raw = SimpleCrossAttention(ninp, num_heads)
+
+        if self.mode == "dual_concat":
+            self.fusion = nn.Sequential(
                 nn.Linear(2 * ninp, ninp),
                 nn.GELU(),
             )
 
-        factory_kwargs = {"device": device, "dtype": dtype}
+        # ---- alignment (IMPORTANT FIX) ----
+        self.query_proj = nn.Linear(ninp, ninp)
+        self.context_proj = nn.Linear(ninp, ninp)
 
-        self.mamba_backbone = HydraBackbone(
-            d_model=ninp,
-            num_layers=self.num_layers,
-            ssm_config=self.ssm_config,
-            norm_epsilon=1e-5,
-            rms_norm=False,     # Doesn't work with true yet.
-            initializer_cfg=self.initializer_config,
-            fused_add_norm=self.fused_add_norm,
-            residual_in_fp32=self.residual_in_fp32,
-            device=self.device,
-            dtype=self.dtype
+        # ---- decoder ----
+        self.decoder = nn.Sequential(
+            nn.Linear(ninp, nhid),
+            nn.GELU(),
+            nn.Linear(nhid, n_out),
         )
 
-        self.decoder = nn.Sequential(nn.Linear(ninp, nhid), nn.GELU(), nn.Linear(nhid, n_out))
+    # =========================
+    # HELPERS
+    # =========================
 
-        self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(
-            ninp, eps=norm_epsilon, **factory_kwargs
-        )
+    def _encode(self, x, y):
+        x = self.encoder(x)
+        y = self.y_encoder(y.unsqueeze(-1) if y.dim() < x.dim() else y)
+        return x, y
 
-        self.apply(
-            partial(
-                _init_weights,
-                n_layer=num_layers,
-                **(initializer_config if initializer_config is not None else {}),
-            )
-        )
+    def _permute_context(self, x, y, split_pos):
+        device = x.device
+        perm = torch.randperm(split_pos, device=device)
 
-    def permute_context(self, x_src, y_src, single_eval_pos):
+        x_perm = x.clone()
+        y_perm = y.clone()
 
-        device = x_src.device
-        perm = torch.randperm(single_eval_pos, device=device)
-
-        x_perm = x_src.clone()
-        y_perm = y_src.clone()
-
-        x_perm[:single_eval_pos] = x_perm[perm]
-        y_perm[:single_eval_pos] = y_perm[perm]
+        x_perm[:split_pos] = x_perm[perm]
+        y_perm[:split_pos] = y_perm[perm]
 
         return x_perm, y_perm
 
+    def _split(self, x, y, split_pos):
+        context = x[:split_pos] + y[:split_pos]
+        query = x[split_pos:]
 
-    def forward(
-        self,
-        src: tuple,
-        single_eval_pos: int,
-        compute_perm_reg: bool = False,
-        num_pcps: int = 1,
-        **kwargs
-    ):
+        return context.permute(1, 0, 2), query.permute(1, 0, 2)
 
-        _, x_src, y_src = src
+    def _align(self, query, context):
+        return self.query_proj(query), self.context_proj(context)
 
-        # Encode
-        x_src = self.encoder(x_src)
-        y_src = self.y_encoder(
-            y_src.unsqueeze(-1) if len(y_src.shape) < len(x_src.shape) else y_src
+    def _cross_attend(self, query, context, raw_context):
+        attn_hidden = self.cross_attn(query, context)
+
+        if self.mode == "single":
+            return attn_hidden
+
+        attn_raw = self.cross_attn_raw(query, raw_context)
+
+        if self.mode == "dual_sum":
+            return (attn_hidden + attn_raw) / math.sqrt(2)
+
+        if self.mode == "dual_concat":
+            return self.fusion(torch.cat([attn_hidden, attn_raw], dim=-1))
+
+        raise ValueError(self.mode)
+
+    def _decode(self, x):
+        return self.decoder(x).permute(1, 0, 2)
+
+    # =========================
+    # TRAIN
+    # =========================
+
+    def forward_train(self, src, split_pos, compute_perm_reg=False):
+        _, x, y = src
+
+        # ---- encode ----
+        x, y = self._encode(x, y)
+
+        # ---- main path ----
+        context, query = self._split(x, y, split_pos)
+
+        context_hidden = self.backbone(context)
+
+        query, context_hidden = self._align(query, context_hidden)
+
+        conditioned = self._cross_attend(
+            query,
+            context_hidden,
+            raw_context=context,
         )
 
-        # ---------- ORIGINAL CONTEXT ----------
-        context_tokens = x_src[:single_eval_pos] + y_src[:single_eval_pos]   # (S, B, D)
-        query_tokens = x_src[single_eval_pos:]                               # (Sq, B, D)
+        output = self._decode(conditioned)
 
-        # Move to (B, S, D)
-        context_tokens = context_tokens.permute(1, 0, 2)
-        query_tokens = query_tokens.permute(1, 0, 2)
-
-        B, S, D = context_tokens.shape
-        Sq = query_tokens.shape[1]
-        P = num_pcps
-
-        if P > 1:
-
-            # Create permutations
-            perms = torch.stack(
-                [torch.randperm(S, device=context_tokens.device) for _ in range(P)],
-                dim=0
-            )  # (P, S)
-
-            context_expanded = context_tokens.unsqueeze(0).expand(P, B, S, D)
-            perms_expanded = perms.unsqueeze(1).unsqueeze(-1).expand(P, B, S, D)
-
-            context_permuted = torch.gather(context_expanded, 2, perms_expanded)
-            context_permuted = context_permuted.reshape(P * B, S, D)
-
-            # Run backbone
-            context_hidden = self.mamba_backbone(
-                context_permuted,
-                inference_parameters=None
-            )  # (P*B, S, D)
-
-            # Expand query tokens
-            query_expanded = query_tokens.unsqueeze(0).expand(P, B, Sq, D)
-            query_expanded = query_expanded.reshape(P * B, Sq, D)
-
-            # ---------- Cross Attention ----------
-            if self.cross_attention_mode != "none":
-
-                if self.cross_attention_mode == "single":
-
-                    conditioned_query = self.cross_attn(query_expanded, context_hidden)
-
-                else:
-                    # Expand raw context
-                    context_tokens_expanded = context_tokens.unsqueeze(0).expand(P, B, S, D)
-                    context_tokens_expanded = context_tokens_expanded.reshape(P * B, S, D)
-
-                    attn_hidden = self.cross_attn(query_expanded, context_hidden)
-                    attn_raw    = self.dual_cross_attn(query_expanded, context_tokens_expanded)
-
-                    if self.cross_attention_mode == "dual_sum":
-                        conditioned_query = (attn_hidden + attn_raw) / math.sqrt(2)
-
-                    elif self.cross_attention_mode == "dual_concat":
-                        fused = torch.cat([attn_hidden, attn_raw], dim=-1)
-                        conditioned_query = self.ca_fusion_proj(fused)
-
-                conditioned_query = conditioned_query.permute(1, 0, 2)
-
-                decoded = self.decoder(conditioned_query)
-                decoded = decoded.permute(1, 0, 2)
-
-            else:
-                full_sequence = torch.cat([context_hidden, query_expanded], dim=1)
-                full_sequence = full_sequence.permute(1, 0, 2)
-
-                decoded = self.decoder(full_sequence)
-                decoded = decoded[-Sq:]
-                decoded = decoded.permute(1, 0, 2)
-
-            # Average predictions over permutations
-            decoded = decoded.reshape(P, B, Sq, -1)
-            output = decoded.mean(dim=0)                   # (B, Sq, n_out)
-            output = output.permute(1, 0, 2)                # (Sq, B, n_out)
-
-            # Also average context hidden for logging
-            context_hidden = context_hidden.reshape(P, B, S, D).mean(dim=0)
-
-        # Case when we don't use multiple permutations, so we just run the backbone once on the original context.
-        else:
-            context_hidden = self.mamba_backbone(
-                context_tokens,
-                inference_parameters=None,
-            )
-
-            if self.cross_attention_mode != "none":
-
-                if self.cross_attention_mode == "single":
-
-                    conditioned_query = self.cross_attn(query_tokens, context_hidden)
-
-                else:
-                    attn_hidden = self.cross_attn(query_tokens, context_hidden)
-                    attn_raw    = self.dual_cross_attn(query_tokens, context_tokens)
-
-                    if self.cross_attention_mode == "dual_sum":
-                        conditioned_query = (attn_hidden + attn_raw) / math.sqrt(2)
-
-                    elif self.cross_attention_mode == "dual_concat":
-                        fused = torch.cat([attn_hidden, attn_raw], dim=-1)
-                        conditioned_query = self.ca_fusion_proj(fused)
-
-                conditioned_query = conditioned_query.permute(1, 0, 2)
-                output = self.decoder(conditioned_query)
-
-            else:
-                full_sequence = torch.cat([context_hidden, query_tokens], dim=1)
-                full_sequence = full_sequence.permute(1, 0, 2)
-                decoded = self.decoder(full_sequence)
-                output = decoded[single_eval_pos:]
-
-        # ---------- PERMUTED CONTEXT (for regularization) ----------
+        # ---- permutation regularization ----
         perm_context_hidden = None
         if compute_perm_reg:
-            x_perm, y_perm = self.permute_context(x_src, y_src, single_eval_pos)
+            x_perm, y_perm = self._permute_context(x, y, split_pos)
 
-            context_tokens_perm = x_perm[:single_eval_pos] + y_perm[:single_eval_pos]
-            context_tokens_perm = context_tokens_perm.permute(1, 0, 2)
+            context_perm, _ = self._split(x_perm, y_perm, split_pos)
 
-            perm_context_hidden = self.mamba_backbone(
-                context_tokens_perm,
-                inference_parameters=None
-            )
+            perm_context_hidden = self.backbone(context_perm)
 
         return output, context_hidden, perm_context_hidden
 
+    # =========================
+    # INFERENCE 
+    # =========================
+
+    def forward_inference(self, src, split_pos, num_pcps=1):
+        if num_pcps == 1:
+            return self.forward_train(src, split_pos, compute_perm_reg=False)
+
+        _, x, y = src
+
+        x, y = self._encode(x, y)
+        context, query = self._split(x, y, split_pos)
+
+        B, S, D = context.shape
+        Sq = query.shape[1]
+        P = num_pcps
+
+        # ---- permutations ----
+        perms = torch.stack(
+            [torch.randperm(S, device=context.device) for _ in range(P)]
+        )
+
+        context_exp = context.unsqueeze(0).expand(P, B, S, D)
+        perms_exp = perms.unsqueeze(1).unsqueeze(-1).expand(P, B, S, D)
+
+        context_perm = torch.gather(context_exp, 2, perms_exp)
+        context_perm = context_perm.reshape(P * B, S, D)
+
+        # ---- backbone ----
+        context_hidden = self.backbone(context_perm)
+
+        # ---- expand query ----
+        query_exp = query.unsqueeze(0).expand(P, B, Sq, D).reshape(P * B, Sq, D)
+        raw_context_exp = context.unsqueeze(0).expand(P, B, S, D).reshape(P * B, S, D)
+
+        # ---- align ----
+        query_exp, context_hidden = self._align(query_exp, context_hidden)
+
+        # ---- cross attention ----
+        conditioned = self._cross_attend(
+            query_exp,
+            context_hidden,
+            raw_context=raw_context_exp,
+        )
+
+        # ---- decode ----
+        decoded = self.decoder(conditioned)  # (P*B, Sq, ...)
+        decoded = decoded.reshape(P, B, Sq, -1)
+
+        output = decoded.mean(dim=0).permute(1, 0, 2)
+
+        context_hidden = context_hidden.reshape(P, B, S, D).mean(dim=0)
+
+        return output, context_hidden, None
+
+    # =========================
+    # MAIN
+    # =========================
+
+    def forward(
+        self,
+        src,
+        single_eval_pos,
+        inference=False,
+        num_pcps=1,              # <-- restored
+        compute_perm_reg=False,
+    ):
+        if inference:
+            return self.forward_inference(
+                src,
+                single_eval_pos,
+                num_pcps=num_pcps
+            )
+
+        return self.forward_train(
+            src,
+            single_eval_pos,
+            compute_perm_reg=compute_perm_reg
+        )

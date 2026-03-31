@@ -46,7 +46,8 @@ def hydra_predict(model,
             output, _, _ = model(
                     (None, eval_xs, eval_ys.float()),
                     single_eval_pos=eval_position,
-                    num_pcps=num_pcps)
+                    num_pcps=num_pcps,
+                    inference=True)
             output = output[:, :, 0:num_classes]
 
             output = output[:, :, 0:num_classes] / torch.exp(softmax_temperature)
