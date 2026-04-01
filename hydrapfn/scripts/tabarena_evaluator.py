@@ -16,12 +16,12 @@ class TabArenaEvaluator:
             self,
             model,
             num_pcps: int = 1,
-            is_lite: bool = False,
+            lite: bool = False,
             tabarena_version: str = "tabarena-v0.1",
             max_instances: int = 2_000,
             max_classes: int = None,
             metric = auc_metric,
-            matric_multiclass = log_loss_metric,
+            metric_multiclass = log_loss_metric,
             csv_path: str = None):
         """
         Code mostly from https://github.com/autogluon/tabarena/blob/main/examples/benchmarking/run_get_tabarena_datasets_from_openml.py
@@ -32,7 +32,7 @@ class TabArenaEvaluator:
         # -- Parameters
         tabarena_version = "tabarena-v0.1"
         """The version of the TabArena benchmark suite to use."""
-        tabarena_lite = False
+        tabarena_lite = lite
         """If True, will use the TabArena-Lite version of the benchmark suite.
         That is, only the first repeat of the first fold of each task will be used."""
 
@@ -158,7 +158,7 @@ class TabArenaEvaluator:
 
                         # For multiclass classification the log loss is used in TabArenav0.1
                         if len(torch.unique(y_test_true)) > 2:
-                            metric_used = matric_multiclass
+                            metric_used = metric_multiclass
                         else:
                             metric_used = metric
 
