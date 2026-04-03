@@ -2,9 +2,7 @@ import os
 import torch
 import torch.nn as nn
 
-from hydrapfn.hydra_icl import HydraModel
-from hydrapfn.bimamba_icl import BiMamba2Model
-from hydrapfn.hydra_full import HydraFullModel
+from hydrapfn.hydra_context import HydraModel
 
 from hydrapfn.scripts.model_trainer import train_model
 
@@ -54,46 +52,8 @@ def load_model(checkpoint_path, device="cuda"):
 
     config_sample["epochs"] = 0
 
-    # Build model according to saved configuration
-    model_type = str(config_sample.get("model_type", "hydra")).lower()
-
-    if model_type == "bimamba2":
-        model = BiMamba2Model(
-            encoder=None,
-            y_encoder=None,
-            n_out=config_sample.get("num_classes", 1),
-            ninp=config_sample.get("emsize", 64),
-            nhid=config_sample.get("nhid", 128),
-            num_layers=config_sample.get("nlayers", 1),
-            cross_attention_mode=config_sample.get("cross_attention_mode", "single"),
-            num_heads=config_sample.get("num_heads", 4),
-            use_col_embedding=config_sample.get("use_col_embedding", False),
-            device=device,
-        )
-    elif model_type == "hydra_full":
-        model = HydraFullModel(
-            encoder=None,
-            y_encoder=None,
-            n_out=config_sample.get("num_classes", 1),
-            ninp=config_sample.get("emsize", 64),
-            nhid=config_sample.get("nhid", 128),
-            num_layers=config_sample.get("nlayers", 1),
-            use_col_embedding=config_sample.get("use_col_embedding", False),
-            device=device,
-        )
-    else:  # default to hydra
-        model = HydraModel(
-            encoder=None,
-            y_encoder=None,
-            n_out=config_sample.get("num_classes", 1),
-            ninp=config_sample.get("emsize", 64),
-            nhid=config_sample.get("nhid", 128),
-            num_layers=config_sample.get("nlayers", 1),
-            cross_attention_mode=config_sample.get("cross_attention_mode", "single"),
-            num_heads=config_sample.get("num_heads", 4),
-            use_col_embedding=config_sample.get("use_col_embedding", False),
-            device=device,
-        )
+    # Build model
+    model, optimizer = train_model(config_sample, evaluation_class=None, device=device)
 
     # Remove potential DataParallel prefix
     model_state = {k.replace("module.", ""): v for k, v in model_state.items()}
