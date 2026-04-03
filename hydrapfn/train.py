@@ -382,6 +382,7 @@ def train(
             # Wandb Logging
             wandb_dict = {}
             wandb_dict[f"train/loss"] = total_loss
+            wandb_dict["extras/lr"] = scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else optimizer.param_groups[0]['lr']
             wandb_dict["extras/nan_share"] = nan_share
             wandb_dict["extras/hidden_kl"] = hidden_kl
 
