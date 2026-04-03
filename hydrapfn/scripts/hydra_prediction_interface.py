@@ -43,11 +43,21 @@ def hydra_predict(model,
         # no_grad disables inference_mode, because otherwise the gradients are lost
         inference_mode_call = torch.inference_mode() if inference_mode and no_grad else NOP()
         with inference_mode_call:
-            output, _, _ = model(
-                    (None, eval_xs, eval_ys.float()),
-                    single_eval_pos=eval_position,
-                    num_pcps=num_pcps,
-                    inference=True)
+            # Check if model supports permutation regularization
+            model_type = getattr(model, 'model_type', 'hydra')
+            supports_perm_reg = model_type in ['hydra', 'bimamba2']
+            
+            if supports_perm_reg:
+                output, _, _ = model(
+                        (None, eval_xs, eval_ys.float()),
+                        single_eval_pos=eval_position,
+                        num_pcps=num_pcps,
+                        inference=True)
+            else:
+                output = model(
+                        (None, eval_xs, eval_ys.float()),
+                        single_eval_pos=eval_position)
+            
             output = output[:, :, 0:num_classes]
 
             output = output[:, :, 0:num_classes] / torch.exp(softmax_temperature)

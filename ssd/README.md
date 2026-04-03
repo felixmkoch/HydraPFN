@@ -1,0 +1,1 @@
+This contains the Bi-Mamba2 implementation from https://github.com/Hprairie/Bi-Mamba2

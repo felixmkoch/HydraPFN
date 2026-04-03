@@ -12,9 +12,57 @@ import hydrapfn.utils as utils
 from hydrapfn.scripts import tabular_metrics
 #from hydrapfn.hydra_context import HydraModel
 from hydrapfn.hydra_icl import HydraModel
+from hydrapfn.bimamba_icl import BiMamba2Model
+from hydrapfn.hydra_full import HydraFullModel
 from hydrapfn.scripts.eval_helper import EvalHelper
 
 from hydra.modules.hydra import Hydra
+
+
+def build_model_from_config(config, encoder, y_encoder, n_out, emsize, nhid, cross_attention_mode, device):
+    model_type = str(config.get("model_type", "hydra")).lower()
+
+    if model_type == "bimamba2":
+        print("==> Using BiMamba2Model (model_type=bimamba2)")
+        return BiMamba2Model(
+            encoder=encoder,
+            y_encoder=y_encoder,
+            n_out=n_out,
+            ninp=emsize,
+            nhid=nhid,
+            num_layers=config.get("nlayers", 1),
+            cross_attention_mode=cross_attention_mode,
+            num_heads=config.get("num_heads", 4),
+            use_col_embedding=config.get("use_col_embedding", False),
+            device=device,
+        )
+
+    if model_type == "hydra_full":
+        print("==> Using HydraFullModel (model_type=hydra_full)")
+        return HydraFullModel(
+            encoder=encoder,
+            y_encoder=y_encoder,
+            n_out=n_out,
+            ninp=emsize,
+            nhid=nhid,
+            num_layers=config.get("nlayers", 1),
+            use_col_embedding=config.get("use_col_embedding", False),
+            device=device,
+        )
+
+    print("==> Using HydraModel (model_type=hydra)")
+    return HydraModel(
+        encoder=encoder,
+        y_encoder=y_encoder,
+        n_out=n_out,
+        ninp=emsize,
+        nhid=nhid,
+        num_layers=config.get("nlayers", 1),
+        cross_attention_mode=cross_attention_mode,
+        num_heads=config.get("num_heads", 4),
+        use_col_embedding=config.get("use_col_embedding", False),
+        device=device,
+    )
 
 
 class Losses():
@@ -169,9 +217,9 @@ def train(
     # Check whetehr a model checkpoint exists on which to conitinue on training. If not, create a new model.
     if continue_training and continue_training.get('path'):
         # Load existing model and optimizer from checkpoint
-        from hydrapfn.scripts.model_loader import load_hydrapfn_model
+        from hydrapfn.scripts.model_loader import load_model
         print(f"Continuing training from checkpoint: {continue_training['path']}")
-        model, loaded_optimizer, _ = load_hydrapfn_model(continue_training['path'], device=device)
+        model, loaded_optimizer, _ = load_model(continue_training['path'], device=device)
         
         # Check if we should override the optimizer
         override_optimizer = continue_training.get('override_optimizer', False)
@@ -184,19 +232,19 @@ def train(
             optimizer = loaded_optimizer
 
     else:
-        # Create new model from scratch
-        model = HydraModel(
-                encoder=encoder,
-                n_out=n_out,
-                ninp=emsize,
-                nhid=nhid,
-                cross_attention_mode=cross_attention_mode,
-                y_encoder=y_encoder_generator(1, emsize),
-                num_layers=nlayers,
-                use_col_embedding=config.get('use_col_embedding', False),
-                device=device
-            )
-        
+        # Create new model from scratch according to config model_type
+        y_encoder = y_encoder_generator(1, emsize)
+        model = build_model_from_config(
+            config=config,
+            encoder=encoder,
+            y_encoder=y_encoder,
+            n_out=n_out,
+            emsize=emsize,
+            nhid=nhid,
+            cross_attention_mode=cross_attention_mode,
+            device=device,
+        )
+
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     model.criterion = criterion
@@ -244,11 +292,22 @@ def train(
                     continue
 
                 with autocast("cuda", enabled=scaler is not None):
-                    output, h1, h2 = model(
-                        tuple(e.to(device) if torch.is_tensor(e) else e for e in data),
-                        single_eval_pos=single_eval_pos,
-                        compute_perm_reg=True
-                    )
+                    # Check if model supports permutation regularization
+                    model_type = str(config.get("model_type", "hydra")).lower()
+                    supports_perm_reg = model_type in ["hydra", "bimamba2"]
+                    
+                    if supports_perm_reg:
+                        output, h1, h2 = model(
+                            tuple(e.to(device) if torch.is_tensor(e) else e for e in data),
+                            single_eval_pos=single_eval_pos,
+                            compute_perm_reg=True
+                        )
+                    else:
+                        output = model(
+                            tuple(e.to(device) if torch.is_tensor(e) else e for e in data),
+                            single_eval_pos=single_eval_pos
+                        )
+                        h1, h2 = None, None
 
                     if single_eval_pos is not None:
                         targets = targets[single_eval_pos:]
@@ -258,8 +317,10 @@ def train(
                     loss, nan_share = utils.torch_nanmean(losses.mean(0), return_nanshare=True)
 
                     # ---------- KL permutation regularization ----------
-                    reg_loss = symmetric_kl_hidden(h1, h2)
-                    reg_losses += reg_loss
+                    reg_loss = 0.0
+                    if supports_perm_reg and h1 is not None and h2 is not None:
+                        reg_loss = symmetric_kl_hidden(h1, h2)
+                        reg_losses += reg_loss
 
                     if not perm_reg_lam:
                         perm_reg_lam = 0.0   
