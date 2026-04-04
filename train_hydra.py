@@ -42,15 +42,15 @@ device = "cuda:0"
 #------------------------------------------------------------------------------------------------
 
 # Reduce size for quick smoke run (safe, behaviour unchanged)
-config['batch_size'] = 16
-config['emsize'] = 64
-config["epochs"] = 10
+config['batch_size'] = 1
+config['emsize'] = 256
+config["epochs"] = 8
 config["bptt"] = 128
 config["max_eval_pos"] = 100
 
-config["num_steps"] = 16
+config["num_steps"] = 4
 
-config["nlayers"] = 4
+config["nlayers"] = 12
 config["enable_autocast"] = True
 
 # Mode of the cross attention. "none" -> No cross-attn; "single" -> normal cross-attn; "dual_sum" -> sum with input enc; "dual_concat" -> concat with input enc. 
@@ -62,7 +62,7 @@ config["use_tabicl_prior"] = True
 
 config["use_col_embedding"] = True
 
-config["model_type"] = "hydra_full"     # {"hydra_full", "bimamba2", "hydra"}
+config["model_type"] = "hydrapfn"     # {"hydra_full", "bimamba2", "hydra", "hydrapfn"}
 
 #------------------------------------------------------------------------------------------------
 #                                           WANDB
@@ -70,7 +70,7 @@ config["model_type"] = "hydra_full"     # {"hydra_full", "bimamba2", "hydra"}
 
 wandb_project = "hydrapfn"
 wandb_job_type = f"test"
-wandb_run_name = f"test_local"
+wandb_run_name = f"test_model"
 
 wandb_config= config
 

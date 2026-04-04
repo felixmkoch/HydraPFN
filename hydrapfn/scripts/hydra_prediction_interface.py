@@ -45,7 +45,7 @@ def hydra_predict(model,
         with inference_mode_call:
             # Check if model supports permutation regularization
             model_type = getattr(model, 'model_type', 'hydra')
-            supports_perm_reg = model_type in ['hydra', 'bimamba2']
+            supports_perm_reg = model_type in ['hydra', 'bimamba2', "hydrapfn"]
             
             if supports_perm_reg:
                 output, _, _ = model(

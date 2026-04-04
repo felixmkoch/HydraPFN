@@ -14,6 +14,7 @@ from hydrapfn.scripts import tabular_metrics
 from hydrapfn.hydra_icl import HydraModel
 from hydrapfn.bimamba_icl import BiMamba2Model
 from hydrapfn.hydra_full import HydraFullModel
+from hydrapfn.hydrapfn import HydraPFN
 from hydrapfn.scripts.eval_helper import EvalHelper
 
 from hydra.modules.hydra import Hydra
@@ -48,6 +49,38 @@ def build_model_from_config(config, encoder, y_encoder, n_out, emsize, nhid, cro
             num_layers=config.get("nlayers", 1),
             use_col_embedding=config.get("use_col_embedding", False),
             device=device,
+        )
+
+    if model_type == "hydrapfn":
+        print("==> Using HydraPFN (model_type=hydrapfn)")
+        hydrapfn_kwargs = {
+            'num_layers': config.get('nlayers', 1),
+            'num_heads': config.get('num_heads', 4),
+            'use_linear_attention': config.get('use_linear_attention', False),
+            'use_skip_connection': config.get('use_skip_connection', False),
+            'use_col_embedding': config.get('use_col_embedding', False),
+            'col_max_classes': config.get('col_max_classes', 10),
+            'col_num_blocks': config.get('col_num_blocks', 3),
+            'col_nhead': config.get('col_nhead', 4),
+            'col_num_inds': config.get('col_num_inds', 128),
+            'col_affine': config.get('col_affine', False),
+            'col_feature_group': config.get('col_feature_group', 'same'),
+            'col_feature_group_size': config.get('col_feature_group_size', 3),
+            'col_target_aware': config.get('col_target_aware', True),
+            'col_ssmax': config.get('col_ssmax', 'qassmax-mlp-elementwise'),
+            'col_num_cls': config.get('col_num_cls', 4),
+            'col_ff_factor': config.get('col_ff_factor', 2),
+            'col_dropout': config.get('col_dropout', 0.0),
+            'device': device,
+            'dtype': config.get('dtype', None),
+        }
+        return HydraPFN(
+            encoder=encoder,
+            y_encoder=y_encoder,
+            n_out=n_out,
+            ninp=emsize,
+            nhid=nhid,
+            **hydrapfn_kwargs
         )
 
     print("==> Using HydraModel (model_type=hydra)")
@@ -294,7 +327,7 @@ def train(
                 with autocast("cuda", enabled=scaler is not None):
                     # Check if model supports permutation regularization
                     model_type = str(config.get("model_type", "hydra")).lower()
-                    supports_perm_reg = model_type in ["hydra", "bimamba2"]
+                    supports_perm_reg = model_type in ["hydra", "bimamba2", "hydrapfn"]
                     
                     if supports_perm_reg:
                         output, h1, h2 = model(
