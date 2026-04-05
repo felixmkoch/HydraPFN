@@ -13,21 +13,23 @@ MODEL_PATH = "hydrapfn/trained_models/inference_test.cpkt"
 DEVICE = "cuda"
 NUM_CLASSES = 10
 NUM_FEATURES = 20
-SEQ_LENGTHS = [5000, 10000, 20000, 50000, 100000]
+SEQ_LENGTHS = [5000, 10000, 20000]
 NUM_RUNS = 3
 WARMUP = 1
 
 
-def create_mock_data(seq_length, num_features, num_classes, device='cpu'):
+def create_mock_data(seq_length, num_features, num_classes, device="cpu", dtype=torch.float32):
     """Create mock input data for inference."""
-    x_data = torch.randn(seq_length, 1, num_features, device=device)
+    x_data = torch.randn(seq_length, 1, num_features, device=device, dtype=dtype)
     y_data = torch.randint(0, num_classes, (seq_length, 1), device=device, dtype=torch.long)
     return x_data, y_data
 
 
-def measure_inference_time(model, seq_length, num_features, num_classes, device='cpu', num_runs=3, warmup=1):
-    """Measure average inference time for a given sequence length."""
-    x_data, y_data = create_mock_data(seq_length, num_features, num_classes, device)
+def measure_inference_time(model, seq_length, num_features, num_classes, device="cpu", num_runs=3, warmup=1):
+    # Infer dtype from model parameters — handles fp16, bf16, fp32 automatically
+    model_dtype = next(model.parameters()).dtype
+
+    x_data, y_data = create_mock_data(seq_length, num_features, num_classes, device, dtype=model_dtype)
     
     # Warmup
     with torch.no_grad():
