@@ -6,10 +6,11 @@ import time
 import torch
 import numpy as np
 from hydrapfn.scripts.model_loader import load_model
+from hydrapfn.scripts.hydra_prediction_interface import hydra_predict
 
 
 # Configuration
-MODEL_PATH = "hydrapfn/trained_models/inference_test.cpkt"
+MODEL_PATH = "hydrapfn/trained_models/hydrapfn22.cpkt"
 DEVICE = "cuda"
 NUM_CLASSES = 10
 NUM_FEATURES = 20
@@ -34,7 +35,7 @@ def measure_inference_time(model, seq_length, num_features, num_classes, device=
     # Warmup
     with torch.no_grad():
         for _ in range(warmup):
-            _ = model((None, x_data, y_data.float()), single_eval_pos=seq_length - 1)
+            _ = hydra_predict(model, x_data, y_data, seq_length - 1, device=device, num_pcps=1, N_ensemble_configurations=1, batch_size_inference=1, no_grad=True, return_logits=True)[0]
     
     # Timed runs
     times = []
@@ -43,7 +44,7 @@ def measure_inference_time(model, seq_length, num_features, num_classes, device=
             if device.startswith('cuda'):
                 torch.cuda.synchronize()
             start = time.time()
-            _ = model((None, x_data, y_data.float()), single_eval_pos=seq_length - 1)
+            _ = hydra_predict(model, x_data, y_data, seq_length - 1, device=device, num_pcps=1, N_ensemble_configurations=1, batch_size_inference=1, no_grad=True, return_logits=True)[0]
             if device.startswith('cuda'):
                 torch.cuda.synchronize()
             end = time.time()
