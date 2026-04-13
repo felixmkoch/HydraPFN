@@ -383,6 +383,7 @@ class HydraPFN(nn.Module):
         nhid: int,
         # ---- backbone ----
         num_layers: int = 1,
+        d_intermediate: int = 0,
         # ---- cross-attention ----
         num_heads: int = 4,
         use_linear_attention: bool = False,
@@ -471,6 +472,7 @@ class HydraPFN(nn.Module):
         self.backbone = HydraBackbone(
             d_model=ninp,
             num_layers=num_layers,
+            d_intermediate=d_intermediate,
             device=device,
             dtype=dtype,
         )
@@ -560,7 +562,7 @@ class HydraPFN(nn.Module):
         y_perm = y.clone()
         x_perm[:split_pos] = x_perm[perm]
         y_perm[:split_pos] = y_perm[perm]
-        return x_perm, y_perm
+        return x_perm, y_perm, perm
 
     def _cross_attend(self, query: Tensor, context_hidden: Tensor, raw_context: Tensor) -> Tensor:
         """
@@ -622,10 +624,13 @@ class HydraPFN(nn.Module):
         # permutation regularization
         perm_context_hidden = None
         if compute_perm_reg:
-            x_perm, y_perm = self._permute_context(x, y, split_pos)
+            x_perm, y_perm, perm = self._permute_context(x, y, split_pos)
             encoded_perm, y_enc_perm = self._encode(x_perm, y_perm, split_pos)
             context_perm, _          = self._split(encoded_perm, y_enc_perm, split_pos)
             perm_context_hidden      = self.backbone(context_perm)
+            # align back to original order - permutation inversion
+            inv_perm = torch.argsort(perm)
+            perm_context_hidden = perm_context_hidden[:, inv_perm, :]
 
         return output, context_hidden, perm_context_hidden
 
@@ -634,8 +639,8 @@ class HydraPFN(nn.Module):
     # ------------------------------------------------------------------ #
 
     def forward_inference(self, src, split_pos: int, num_pcps: int = 1):
-        if num_pcps == 1:
-            return self.forward_train(src, split_pos, compute_perm_reg=False)
+        #if num_pcps == 1:
+        #    return self.forward_train(src, split_pos, compute_perm_reg=False)
 
         _, x, y = src
 
