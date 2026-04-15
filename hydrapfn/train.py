@@ -80,6 +80,7 @@ def build_model_from_config(config, encoder, y_encoder, n_out, emsize, nhid, cro
             n_out=n_out,
             ninp=emsize,
             nhid=nhid,
+            d_intermediate=config.get("d_intermediate", 0),
             **hydrapfn_kwargs
         )
 
