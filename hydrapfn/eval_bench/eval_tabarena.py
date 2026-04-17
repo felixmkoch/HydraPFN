@@ -6,7 +6,7 @@ from pathlib import Path
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tabarena.benchmark.task.openml import OpenMLTaskWrapper
 from tabicl import TabICLClassifier
-from tabpfn_v1 import TabPFNClassifier
+from tabpfn import TabPFNClassifier
 
 TABARENA_SUITE = 457
 
@@ -145,14 +145,14 @@ if __name__ == "__main__":
     # some tests
 
     MODELS = {
-        #"HydraPFN": HydraPFN,
-        #"TabPFNv2.5": TabPFNClassifier,
+        #"HydraPFN": HydraPFN, # TODO: uncomment with sklearn api
+        "TabPFNv2.6": TabPFNClassifier, # TODO: needs api token, explain in readme
         "TabICLv2": TabICLClassifier,
     }
 
     evaluate_tabarena(models=MODELS,
         lite=True,
-        task_indices=[1, 2, 5],
-    #    max_samples=10000,
+        #task_indices=[1, 2, 5],
+        #max_samples=10000,
         output_fname="results_tabarena.csv",
     )
