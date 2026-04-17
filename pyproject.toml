@@ -5,16 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 license = "MIT"
 
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.14"
 
 dependencies = [
-    "torch>=2.10.0",
-    "torchvision>=0.25.0",
+    "torch>=2.9.1",
+    "torchvision>=0.21.0",
     "gpytorch>=1.5.0",
     "scikit-learn>=1.2.2",
     "pyyaml>=6.0.1",
     "seaborn>=0.12.2",
-    "xgboost>=3.2.0",
+    "xgboost>=2.0",
     "tqdm>=4.66.1",
     "numpy>=1.21.2",
     "openml>=0.15.1",
@@ -23,6 +23,9 @@ dependencies = [
     "ConfigSpace>=0.6.1",
     "lightgbm>=4.6.0",
     "wandb>=0.25.0",
+    "tabarena @ git+https://github.com/autogluon/tabarena.git#subdirectory=tabarena",
+    "tabicl>=2.0.3",
+    "tabpfn>=7.1.1", # TabPFNv2.6
 ]
 
 [dependency-groups]
@@ -38,3 +41,12 @@ default-groups = ["gpu-only"]
 
 [tool.setuptools]
 packages = ["hydra", "hydrapfn"]
+
+[build-system]
+requires = [
+    "setuptools",
+    "wheel",
+    "numpy",
+    #"ninja",
+]
+build-backend = "setuptools.build_meta"
