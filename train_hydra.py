@@ -66,7 +66,7 @@ config["use_col_embedding"] = True
 
 config["model_type"] = "hydrapfn"     # {"hydra_full", "bimamba2", "hydra", "hydrapfn"}
 
-config["loss_label_smoothing"] = 0.1
+config["loss_label_smoothing"] = 0.1    # Label smoothing for the cross entropy loss. If set to 0.0, no label smoothing is done.
 
 #------------------------------------------------------------------------------------------------
 #                                           WANDB
