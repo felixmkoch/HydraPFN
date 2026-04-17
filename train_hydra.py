@@ -42,21 +42,23 @@ device = "cuda:0"
 #------------------------------------------------------------------------------------------------
 
 # Reduce size for quick smoke run (safe, behaviour unchanged)
-config['batch_size'] = 1
-config['emsize'] = 256
-config["epochs"] = 8
-config["bptt"] = 128
-config["max_eval_pos"] = 100
+config['batch_size'] = 64
+config['emsize'] = 128
+#config['d_intermediate'] = 2 * config['emsize']
+config['d_intermediate'] = 0
+config["epochs"] = 1500
+config["bptt"] = 1024
+config["max_eval_pos"] = 1000
 
-config["num_steps"] = 4
+config["num_steps"] = 32
 
-config["nlayers"] = 12
+config["nlayers"] = 8
 config["enable_autocast"] = True
 
 # Mode of the cross attention. "none" -> No cross-attn; "single" -> normal cross-attn; "dual_sum" -> sum with input enc; "dual_concat" -> concat with input enc. 
-config["cross_attention_mode"] = "single"
+config["cross_attention_mode"] = "dual_concat"
 # Regularization to punish deviations from permutated hidden states.
-config["perm_reg_lam"] = 0.0
+config["perm_reg_lam"] = 0.05
 
 config["use_tabicl_prior"] = True
 
@@ -64,13 +66,15 @@ config["use_col_embedding"] = True
 
 config["model_type"] = "hydrapfn"     # {"hydra_full", "bimamba2", "hydra", "hydrapfn"}
 
+config["loss_label_smoothing"] = 0.1
+
 #------------------------------------------------------------------------------------------------
 #                                           WANDB
 #------------------------------------------------------------------------------------------------
 
 wandb_project = "hydrapfn"
-wandb_job_type = f"test"
-wandb_run_name = f"test_model"
+wandb_job_type = f"train"
+wandb_run_name = f"hydraicl_local"
 
 wandb_config= config
 
@@ -85,7 +89,7 @@ eval_class = EvalHelper()
 model, optimizer = train_model(
     config=config,
     evaluation_class=eval_class,
-    best_model_path="hydrapfn/trained_models/test_model.cpkt",
+    best_model_path="hydrapfn/trained_models/hydraicl_local.cpkt",
     model_saver=save_model,
     continue_training={}
 )

@@ -102,9 +102,9 @@ def build_model_from_config(config, encoder, y_encoder, n_out, emsize, nhid, cro
 class Losses():
     gaussian = nn.GaussianNLLLoss(full=True, reduction='none')
     mse = nn.MSELoss(reduction='none')
-    def ce(num_classes):
+    def ce(num_classes, label_smoothing=0.0):
         num_classes = num_classes.shape[0] if torch.is_tensor(num_classes) else num_classes
-        return nn.CrossEntropyLoss(reduction='none', weight=torch.ones(num_classes))
+        return nn.CrossEntropyLoss(reduction='none', weight=torch.ones(num_classes), label_smoothing=label_smoothing)
     bce = nn.BCEWithLogitsLoss(reduction='none')
 
 

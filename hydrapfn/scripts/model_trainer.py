@@ -157,7 +157,7 @@ def train_model(
     encoder = encoders.NanHandlingEncoder
 
     # We assume that the maximum foir the number of classes is 10.
-    loss = Losses.ce(config['max_num_classes'])
+    loss = Losses.ce(config['max_num_classes'], label_smoothing=config.get('loss_label_smoothing', 0.0))
 
     config.setdefault('multiclass_type', 'rank')
     config.setdefault('mix_activations', False)
