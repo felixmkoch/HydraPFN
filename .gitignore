@@ -211,3 +211,4 @@ pyrightconfig.json
 
 # Other
 output/*
+!output/.gitkeep
